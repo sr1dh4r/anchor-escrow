@@ -14,32 +14,32 @@ pub struct Exchange<'info> {
     pub taker: Signer<'info>,
     #[account(mut)]
     pub initializer: SystemAccount<'info>,
-    pub mint_a: Box<Account<'info, Mint>>,
-    pub mint_b: Box<Account<'info, Mint>>,
+    pub usdt_mint: Box<Account<'info, Mint>>,
+    pub inr_mint: Box<Account<'info, Mint>>,
     #[account(
         init_if_needed,
         payer = taker,
-        associated_token::mint = mint_a,
+        associated_token::mint = usdt_mint,
         associated_token::authority = taker
     )]
-    pub taker_ata_a: Box<Account<'info, TokenAccount>>,
+    pub taker_ata_usdt: Box<Account<'info, TokenAccount>>,
     #[account(
         mut,
-        associated_token::mint = mint_b,
+        associated_token::mint = inr_mint,
         associated_token::authority = taker
     )]
-    pub taker_ata_b: Box<Account<'info, TokenAccount>>,
+    pub taker_ata_inr: Box<Account<'info, TokenAccount>>,
     #[account(
         init_if_needed,
         payer = taker,
-        associated_token::mint = mint_b,
+        associated_token::mint = inr_mint,
         associated_token::authority = initializer
     )]
-    pub initializer_ata_b: Box<Account<'info, TokenAccount>>,
+    pub initializer_ata_inr: Box<Account<'info, TokenAccount>>,
     #[account(
         mut,
-        has_one = mint_b,
-        constraint = taker_ata_b.amount >= escrow.taker_amount,
+        has_one = usdt_mint,
+        constraint = taker_ata_inr.amount >= escrow.inr_amount,
         close = initializer,
         seeds=[b"state", escrow.seed.to_le_bytes().as_ref()],
         bump = escrow.bump,
@@ -47,7 +47,7 @@ pub struct Exchange<'info> {
     pub escrow: Box<Account<'info, Escrow>>,
     #[account(
         mut,
-        associated_token::mint = mint_a,
+        associated_token::mint = usdt_mint,
         associated_token::authority = escrow
     )]
     pub vault: Box<Account<'info, TokenAccount>>,
@@ -60,8 +60,8 @@ impl<'info> Exchange<'info> {
     pub fn deposit(&mut self) -> Result<()> {
         transfer_checked(
             self.into_deposit_context(),
-            self.escrow.taker_amount,
-            self.mint_b.decimals,
+            self.escrow.inr_amount,
+            self.inr_mint.decimals,
         )
     }
 
@@ -74,8 +74,8 @@ impl<'info> Exchange<'info> {
 
         transfer_checked(
             self.into_withdraw_context().with_signer(&signer_seeds),
-            self.escrow.initializer_amount,
-            self.mint_a.decimals,
+            self.escrow.usdt_amount,
+            self.usdt_mint.decimals,
         )?;
 
         close_account(self.into_close_context().with_signer(&signer_seeds))
@@ -83,9 +83,9 @@ impl<'info> Exchange<'info> {
 
     fn into_deposit_context(&self) -> CpiContext<'_, '_, '_, 'info, TransferChecked<'info>> {
         let cpi_accounts = TransferChecked {
-            from: self.taker_ata_b.to_account_info(),
-            mint: self.mint_b.to_account_info(),
-            to: self.initializer_ata_b.to_account_info(),
+            from: self.taker_ata_inr.to_account_info(),
+            mint: self.inr_mint.to_account_info(),
+            to: self.initializer_ata_inr.to_account_info(),
             authority: self.taker.to_account_info(),
         };
         CpiContext::new(self.token_program.to_account_info(), cpi_accounts)
@@ -94,8 +94,8 @@ impl<'info> Exchange<'info> {
     fn into_withdraw_context(&self) -> CpiContext<'_, '_, '_, 'info, TransferChecked<'info>> {
         let cpi_accounts = TransferChecked {
             from: self.vault.to_account_info(),
-            mint: self.mint_a.to_account_info(),
-            to: self.taker_ata_a.to_account_info(),
+            mint: self.usdt_mint.to_account_info(),
+            to: self.taker_ata_usdt.to_account_info(),
             authority: self.escrow.to_account_info(),
         };
         CpiContext::new(self.token_program.to_account_info(), cpi_accounts)
