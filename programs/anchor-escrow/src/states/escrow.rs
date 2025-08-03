@@ -4,14 +4,16 @@ use anchor_lang::prelude::*;
 pub struct Escrow {
     pub seed: u64,
     pub bump: u8,
-    pub initializer: Pubkey,
-    pub mint_a: Pubkey,
-    pub mint_b: Pubkey,
-    pub initializer_amount: u64,
-    pub taker_amount: u64,
+    pub seller: Pubkey,           // USDT seller
+    pub buyer: Pubkey,            // INR buyer
+    pub usdt_mint: Pubkey,        // USDT mint
+    pub usdt_amount: u64,         // Amount of USDT being sold
+    pub inr_amount: u64,          // Amount of INR to be paid (off-chain)
+    pub is_paid: bool,            // Whether INR payment has been confirmed
+    pub is_completed: bool,       // Whether USDT has been released to buyer
 }
 
 impl Space for Escrow {
     // First 8 Bytes are Discriminator (u64)
-    const INIT_SPACE: usize = 8 + 8 + 1 + 32 + 32 + 32 + 8 + 8;
+    const INIT_SPACE: usize = 8 + 8 + 1 + 32 + 32 + 32 + 8 + 8 + 1 + 1;
 }
