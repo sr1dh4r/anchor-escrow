@@ -20,6 +20,42 @@ This is a modified version of the Anchor Escrow program that supports USDT selle
 3. **Release USDT**: Seller releases USDT to buyer after payment confirmation
 4. **Cancel**: Seller can cancel escrow anytime before completion
 
+## 📁 Project Structure
+
+```
+anchor-escrow/
+├── programs/                 # Solana program source code
+├── tests/                   # Program tests
+├── client/                  # Client-side implementation
+│   ├── escrow-operations.js # Vanilla JS escrow operations
+│   ├── escrow-demo.html     # Interactive web demo
+│   ├── CLIENT_USAGE_GUIDE.md # Client integration guide
+│   ├── FRONTEND_EXAMPLE.md  # React frontend example
+│   └── README.md           # Client documentation
+├── target/                  # Build artifacts
+├── Anchor.toml             # Anchor configuration
+├── package.json            # Node.js dependencies
+└── README.md              # This file
+```
+
+## 🚀 Client-Side Implementation
+
+For client-side integration and frontend development, see the [`client/`](./client/) folder which contains:
+
+- **Vanilla JavaScript Implementation**: Complete escrow operations in `escrow-operations.js`
+- **Interactive Demo**: Web-based demo in `escrow-demo.html`
+- **React Example**: Frontend implementation guide in `FRONTEND_EXAMPLE.md`
+- **Usage Guide**: Comprehensive client integration guide in `CLIENT_USAGE_GUIDE.md`
+
+### Quick Client Start
+```bash
+# Open the interactive demo
+open client/escrow-demo.html
+
+# Or integrate the JavaScript functions
+<script src="client/escrow-operations.js"></script>
+```
+
 ## Install, Build, Deploy and Test
 
 ### Option 1: Using Docker (Recommended)
