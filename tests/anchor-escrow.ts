@@ -32,6 +32,11 @@ describe("real-escrow-test", () => {
   const initializerAtaB = new PublicKey("AuxLmhwCSKJTpqvAqLm5489qiYeSR23C8Sbw7FoiMKjo");
   const takerAtaA = new PublicKey("FxNgzWmhFsBf4HiRkMHH9kEDqecWBFgE3Cgr7GmMShAs");
   const takerAtaB = new PublicKey("EwBqUHScQmTPaLv4h67yNTpXbgjqpQRHYSe3hwPLW7qn");
+  
+  // Platform wallet (hardcoded in program - derived automatically)
+  const platformWallet = new PublicKey("CkjSZdXopqgh7jkPFn8MxdU7QKwfYdjQNNwbYABFpCx2");
+  const platformAtaA = getAssociatedTokenAddressSync(mintA, platformWallet);
+  
 
   // Determined Escrow and Vault addresses
   const seed = new anchor.BN(randomBytes(8));
@@ -51,8 +56,10 @@ describe("real-escrow-test", () => {
     initializerAtaB: initializerAtaB,
     takerAtaA,
     takerAtaB,
+    platformAtaA,
     escrow,
     vault,
+    platformWallet,
     associatedTokenprogram: ASSOCIATED_TOKEN_PROGRAM_ID,
     tokenProgram: TOKEN_PROGRAM_ID,
     systemProgram: SystemProgram.programId,

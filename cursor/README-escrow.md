@@ -97,6 +97,12 @@ pub struct Escrow {
 - Only seller can release tokens (incentive alignment)
 - Seller wants INR payment, so they'll release after confirmation
 
+### **Platform Fee Mechanism**
+- **Fee Percentage**: 6% (hardcoded in program)
+- **Platform Wallet**: `CkjSZdXopqgh7jkPFn8MxdU7QKwfYdjQNNwbYABFpCx2` (hardcoded)
+- **Automatic Distribution**: Fee collected before releasing to buyer
+- **Transparent**: Fee percentage and wallet are immutable
+
 ### **Atomic Operations**
 - Each instruction is atomic (all-or-nothing)
 - No partial state changes
@@ -126,7 +132,8 @@ pub struct Escrow {
 
 ### **Expected Results**
 - **Seller**: -0.1 Token A (deposited), +INR (off-chain)
-- **Buyer**: +0.1 Token A (received), -INR (off-chain)
+- **Buyer**: +0.094 Token A (received), -INR (off-chain)
+- **Platform**: +0.006 Token A (6% platform fee)
 
 ## 🚀 **Deployment**
 

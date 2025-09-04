@@ -4,6 +4,7 @@
 # Wallet addresses
 INITIALIZER_WALLET="8EiCwjqc561w1JXe1wdhkHQXkH8tW3SxMeHwh8KT2gjj"
 TAKER_WALLET="DZYRaySJEXFsCRMrBRFTigX6VHVMxHLiP7BBtWUAoBCD"
+PLATFORM_WALLET="CkjSZdXopqgh7jkPFn8MxdU7QKwfYdjQNNwbYABFpCx2"
 
 # Token mints
 TOKEN_A_MINT="J1UjsVLRwGcpoCjexjDaHWVoj9F3TbdCpwVYNUYkww6y"
@@ -22,8 +23,8 @@ ESCROW_AMOUNT_A=100000  # 0.1 Token A
 ESCROW_AMOUNT_B=200000  # 0.2 Token B
 
 # File paths
-DEV_WALLET_FILE="/workspace/cursor/dev-wallet.json"
-TAKER_WALLET_FILE="/workspace/cursor/taker-wallet.json"
+DEV_WALLET_FILE="/workspace/cursor/wallet-dev.json"
+TAKER_WALLET_FILE="/workspace/cursor/wallet-taker.json"
 
 # Display configuration
 echo "🔧 Escrow Configuration Loaded"

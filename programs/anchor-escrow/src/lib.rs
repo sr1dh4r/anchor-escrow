@@ -2,6 +2,7 @@ use anchor_lang::prelude::*;
 mod contexts;
 use contexts::*;
 mod states;
+mod constants;
 
 declare_id!("Bua4jWEfUYb3QcaWnfJEbG4KKv6C1SqJSGFr5KCntZDW");
 #[program]

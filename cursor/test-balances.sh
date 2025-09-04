@@ -1,33 +1,46 @@
 #!/bin/bash
-set -euo pipefail
 
-# Load configuration
-source /workspace/cursor/test-config.sh
+# Source configuration
+source "$(dirname "$0")/test-config.sh"
 
 # Setup Solana CLI config
 mkdir -p /root/.config/solana
 cp $DEV_WALLET_FILE /root/.config/solana/id.json
 solana config set --url devnet
 
-echo "🔍 Checking Token Balances"
-echo "=========================="
-echo "Wallet: $INITIALIZER_WALLET"
-echo "Token A: $TOKEN_A_MINT"
-echo "Token B: $TOKEN_B_MINT"
-echo ""
+# Function to check balance for a specific wallet
+check_balance() {
+    local wallet_name="$1"
+    local wallet_address="$2"
+    local ata_address="$3"
+    
+    echo "📊 $wallet_name Token A Balance:"
+    echo "Wallet: $wallet_address"
+    echo "Token A: $TOKEN_A_MINT"
+    if [ -n "$ata_address" ]; then
+        echo "ATA: $ata_address"
+    fi
+    echo "Balance:"
+    spl-token balance $TOKEN_A_MINT --owner $wallet_address
+    echo ""
+}
 
-echo "📊 Current Token Balances:"
-echo "=========================="
-echo "Token A Balance: $(spl-token balance "$TOKEN_A_MINT")"
-echo "Token B Balance: $(spl-token balance "$TOKEN_B_MINT")"
-echo ""
-
-echo "🔗 Token Account Addresses:"
-echo "==========================="
-TOKEN_A_ATA=$(spl-token accounts "$TOKEN_A_MINT" --output json | jq -r '.accounts[0].address')
-TOKEN_B_ATA=$(spl-token accounts "$TOKEN_B_MINT" --output json | jq -r '.accounts[0].address')
-echo "Token A ATA: $TOKEN_A_ATA"
-echo "Token B ATA: $TOKEN_B_ATA"
-echo ""
-
-echo "✅ Balance check complete!"
+# Check if specific wallet requested
+if [ "$1" = "seller" ] || [ "$1" = "initializer" ]; then
+    check_balance "Seller (Initializer)" "$INITIALIZER_WALLET" "$INITIALIZER_ATA_A"
+elif [ "$1" = "buyer" ] || [ "$1" = "taker" ]; then
+    check_balance "Buyer (Taker)" "$TAKER_WALLET" "$TAKER_ATA_A"
+elif [ "$1" = "platform" ]; then
+    check_balance "Platform" "$PLATFORM_WALLET" ""
+else
+    # Check all wallets by default
+    echo "🔍 Checking Token A balances for all wallets..."
+    echo "=============================================="
+    echo ""
+    
+    check_balance "Seller (Initializer)" "$INITIALIZER_WALLET" "$INITIALIZER_ATA_A"
+    check_balance "Buyer (Taker)" "$TAKER_WALLET" "$TAKER_ATA_A"
+    check_balance "Platform" "$PLATFORM_WALLET" ""
+    
+    echo "✅ Balance check complete!"
+fi

@@ -26,25 +26,27 @@ All test scripts use a centralized configuration file: `cursor/test-config.sh`
 
 ### 1. Balance Checking
 
-#### Check Your Wallet Balances
+#### Check All Wallet Balances
 ```bash
 docker run --rm -v "$(pwd)":/workspace -w /workspace solanafoundation/anchor:v0.31.1 ./cursor/test-balances.sh
 ```
 
 **Output:**
-- Current Token A and Token B balances
+- Current Token A and Token B balances for all wallets
 - Associated Token Account (ATA) addresses
 - Wallet address verification
 
-#### Check Taker Wallet Balances
+#### Check Specific Wallet Balances
 ```bash
-docker run --rm -v "$(pwd)":/workspace -w /workspace solanafoundation/anchor:v0.31.1 ./cursor/test-taker-balances.sh
-```
+# Check initializer (seller) only
+docker run --rm -v "$(pwd)":/workspace -w /workspace solanafoundation/anchor:v0.31.1 ./cursor/test-balances.sh seller
 
-**Output:**
-- Taker's Token A and Token B balances
-- Taker's ATA addresses
-- Wallet address verification
+# Check taker (buyer) only  
+docker run --rm -v "$(pwd)":/workspace -w /workspace solanafoundation/anchor:v0.31.1 ./cursor/test-balances.sh taker
+
+# Check platform wallet only
+docker run --rm -v "$(pwd)":/workspace -w /workspace solanafoundation/anchor:v0.31.1 ./cursor/test-balances.sh platform
+```
 
 ### 2. Test Setup
 
@@ -121,7 +123,7 @@ tests/
 
 ### Script Dependencies
 - **Configuration**: `cursor/test-config.sh`
-- **Wallet Files**: `cursor/dev-wallet.json`, `cursor/taker-wallet.json`
+- **Wallet Files**: `cursor/wallet-dev.json`, `cursor/wallet-taker.json`
 - **Environment**: Docker with Anchor v0.31.1
 
 ## Troubleshooting
@@ -147,7 +149,7 @@ tests/
 ```bash
 # Check current balances
 ./cursor/test-balances.sh
-./cursor/test-taker-balances.sh
+./cursor/test-balances.sh taker
 
 # Verify wallet addresses
 docker run --rm -v "$(pwd)":/workspace -w /workspace solanafoundation/anchor:v0.31.1 bash -c "source /workspace/cursor/test-config.sh && echo 'Initializer: $INITIALIZER_WALLET' && echo 'Taker: $TAKER_WALLET'"
