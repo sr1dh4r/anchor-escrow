@@ -11,35 +11,21 @@ use crate::states::Escrow;
 #[derive(Accounts)]
 pub struct Exchange<'info> {
     #[account(mut)]
-    pub taker: Signer<'info>,
-    #[account(mut)]
-    pub initializer: SystemAccount<'info>,
+    pub initializer: Signer<'info>,
+    pub taker: SystemAccount<'info>,
     pub mint_a: Box<Account<'info, Mint>>,
     pub mint_b: Box<Account<'info, Mint>>,
     #[account(
         init_if_needed,
-        payer = taker,
+        payer = initializer,
         associated_token::mint = mint_a,
         associated_token::authority = taker
     )]
     pub taker_ata_a: Box<Account<'info, TokenAccount>>,
     #[account(
         mut,
-        associated_token::mint = mint_b,
-        associated_token::authority = taker
-    )]
-    pub taker_ata_b: Box<Account<'info, TokenAccount>>,
-    #[account(
-        init_if_needed,
-        payer = taker,
-        associated_token::mint = mint_b,
-        associated_token::authority = initializer
-    )]
-    pub initializer_ata_b: Box<Account<'info, TokenAccount>>,
-    #[account(
-        mut,
-        has_one = mint_b,
-        constraint = taker_ata_b.amount >= escrow.taker_amount,
+        has_one = mint_a,
+        constraint = escrow.payment_confirmed == true,
         close = initializer,
         seeds=[b"state", escrow.seed.to_le_bytes().as_ref()],
         bump = escrow.bump,
@@ -57,14 +43,6 @@ pub struct Exchange<'info> {
 }
 
 impl<'info> Exchange<'info> {
-    pub fn deposit(&mut self) -> Result<()> {
-        transfer_checked(
-            self.into_deposit_context(),
-            self.escrow.taker_amount,
-            self.mint_b.decimals,
-        )
-    }
-
     pub fn withdraw_and_close_vault(&mut self) -> Result<()> {
         let signer_seeds: [&[&[u8]]; 1] = [&[
             b"state",
@@ -79,16 +57,6 @@ impl<'info> Exchange<'info> {
         )?;
 
         close_account(self.into_close_context().with_signer(&signer_seeds))
-    }
-
-    fn into_deposit_context(&self) -> CpiContext<'_, '_, '_, 'info, TransferChecked<'info>> {
-        let cpi_accounts = TransferChecked {
-            from: self.taker_ata_b.to_account_info(),
-            mint: self.mint_b.to_account_info(),
-            to: self.initializer_ata_b.to_account_info(),
-            authority: self.taker.to_account_info(),
-        };
-        CpiContext::new(self.token_program.to_account_info(), cpi_accounts)
     }
 
     fn into_withdraw_context(&self) -> CpiContext<'_, '_, '_, 'info, TransferChecked<'info>> {

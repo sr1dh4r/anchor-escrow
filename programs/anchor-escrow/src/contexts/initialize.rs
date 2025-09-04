@@ -56,6 +56,7 @@ impl<'info> Initialize<'info> {
             mint_b: self.mint_b.key(),
             initializer_amount,
             taker_amount,
+            payment_confirmed: false,
         });
         Ok(())
     }

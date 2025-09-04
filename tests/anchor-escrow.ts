@@ -74,15 +74,15 @@ describe("real-escrow-test", () => {
     return signature;
   };
 
-  it("Initialize escrow with real wallets", async () => {
-    console.log("🎯 Initializing escrow...");
-    console.log("Initializer:", initializer.publicKey.toString());
-    console.log("Taker:", taker.publicKey.toString());
+  it("Initialize one-sided escrow", async () => {
+    console.log("🎯 Initializing one-sided escrow...");
+    console.log("Initializer (Seller):", initializer.publicKey.toString());
+    console.log("Taker (Buyer):", taker.publicKey.toString());
     console.log("Token A:", mintA.toString());
     console.log("Token B:", mintB.toString());
     
-    const initializerAmount = 100000;  // 0.1 Token A
-    const takerAmount = 200000;        // 0.2 Token B
+    const initializerAmount = 100000;  // 0.1 Token A (USDT)
+    const takerAmount = 0;             // 0 Token B (no Token B needed)
     
     await program.methods
       .initialize(seed, new anchor.BN(initializerAmount), new anchor.BN(takerAmount))
@@ -92,20 +92,38 @@ describe("real-escrow-test", () => {
       .then(confirm)
       .then(log);
       
-    console.log("✅ Escrow initialized successfully!");
+    console.log("✅ One-sided escrow initialized successfully!");
   });
 
-  it("Exchange tokens with real wallets", async () => {
-    console.log("🔄 Executing exchange...");
+  it("Confirm off-chain payment", async () => {
+    console.log("💳 Confirming off-chain payment...");
     
     await program.methods
-      .exchange()
-      .accounts({ ...accounts })
+      .confirmPayment()
+      .accounts({
+        taker: taker.publicKey,
+        escrow,
+        mintA: mintA,
+      })
       .signers([taker])
       .rpc()
       .then(confirm)
       .then(log);
 
-    console.log("✅ Exchange completed successfully!");
+    console.log("✅ Payment confirmed successfully!");
+  });
+
+  it("Release tokens to buyer", async () => {
+    console.log("🔄 Releasing tokens to buyer...");
+    
+    await program.methods
+      .exchange()
+      .accounts({ ...accounts })
+      .signers([initializer])  // Only seller signs
+      .rpc()
+      .then(confirm)
+      .then(log);
+
+    console.log("✅ Tokens released successfully!");
   });
 });

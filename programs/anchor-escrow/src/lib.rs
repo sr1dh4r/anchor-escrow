@@ -23,8 +23,11 @@ pub mod anchor_escrow {
         ctx.accounts.refund_and_close_vault()
     }
 
+    pub fn confirm_payment(ctx: Context<ConfirmPayment>) -> Result<()> {
+        ctx.accounts.confirm_payment()
+    }
+
     pub fn exchange(ctx: Context<Exchange>) -> Result<()> {
-        ctx.accounts.deposit()?;
         ctx.accounts.withdraw_and_close_vault()
     }
 }
