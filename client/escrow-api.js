@@ -363,6 +363,148 @@ class EscrowAPI {
             return 0;
         }
     }
+
+    /**
+     * Format token amount for display
+     * 
+     * @param {number} amount - Amount in smallest unit
+     * @param {number} decimals - Token decimals (default: 6)
+     * @returns {string} Formatted amount
+     */
+    formatTokenAmount(amount, decimals = 6) {
+        return (amount / Math.pow(10, decimals)).toFixed(decimals);
+    }
+
+    /**
+     * Parse token amount from user input
+     * 
+     * @param {string} input - User input string
+     * @param {number} decimals - Token decimals (default: 6)
+     * @returns {number} Amount in smallest unit
+     */
+    parseTokenAmount(input, decimals = 6) {
+        const amount = parseFloat(input);
+        if (isNaN(amount) || amount <= 0) {
+            throw new Error('Invalid amount');
+        }
+        return Math.floor(amount * Math.pow(10, decimals));
+    }
+
+    /**
+     * Generate random seed for escrow
+     * 
+     * @returns {number} Random seed
+     */
+    generateSeed() {
+        return Math.floor(Math.random() * 0xFFFFFFFF);
+    }
+
+    /**
+     * Show loading state on button
+     * 
+     * @param {HTMLElement} button - Button element
+     * @param {string} text - Loading text
+     */
+    showLoading(button, text = 'Loading...') {
+        button.disabled = true;
+        button.innerHTML = `
+            <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            ${text}
+        `;
+    }
+
+    /**
+     * Hide loading state on button
+     * 
+     * @param {HTMLElement} button - Button element
+     * @param {string} text - Original text
+     */
+    hideLoading(button, text) {
+        button.disabled = false;
+        button.innerHTML = text;
+    }
+
+    /**
+     * Show success message
+     * 
+     * @param {string} message - Success message
+     * @param {string} explorerUrl - Optional explorer URL
+     */
+    showSuccess(message, explorerUrl = null) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4';
+        alertDiv.innerHTML = `
+            <div class="flex items-center">
+                <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                </svg>
+                <span>${message}</span>
+                ${explorerUrl ? `<a href="${explorerUrl}" target="_blank" class="ml-2 text-blue-600 hover:text-blue-800 underline">View Transaction</a>` : ''}
+            </div>
+        `;
+        document.getElementById('alerts').appendChild(alertDiv);
+        setTimeout(() => alertDiv.remove(), 10000);
+    }
+
+    /**
+     * Show error message
+     * 
+     * @param {string} message - Error message
+     */
+    showError(message) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4';
+        alertDiv.innerHTML = `
+            <div class="flex items-center">
+                <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+                </svg>
+                <span>${message}</span>
+            </div>
+        `;
+        document.getElementById('alerts').appendChild(alertDiv);
+        setTimeout(() => alertDiv.remove(), 10000);
+    }
+
+    /**
+     * Clear all alerts
+     */
+    clearAlerts() {
+        const alerts = document.getElementById('alerts');
+        if (alerts) {
+            alerts.innerHTML = '';
+        }
+    }
+
+    /**
+     * Get wallet from Phantom
+     * 
+     * @returns {Promise<Object>} Wallet object with publicKey and signTransaction
+     */
+    async getWallet() {
+        if (!window.solana || !window.solana.isPhantom) {
+            throw new Error('Phantom wallet not found. Please install Phantom wallet.');
+        }
+        
+        const response = await window.solana.connect();
+        return {
+            publicKey: response.publicKey,
+            signTransaction: window.solana.signTransaction,
+            signAllTransactions: window.solana.signAllTransactions
+        };
+    }
+
+    /**
+     * Create a simple keypair for testing (DO NOT USE IN PRODUCTION)
+     * 
+     * @returns {Keypair} Generated keypair
+     */
+    createTestKeypair() {
+        return Keypair.generate();
+    }
 }
 
 // Export for use in other scripts
