@@ -6,8 +6,22 @@
     <title>USDT-INR Escrow - Seller</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
-    <script src="https://unpkg.com/@coral-xyz/anchor@latest/dist/index.iife.min.js"></script>
-    <script src="https://unpkg.com/@solana/spl-token@latest/lib/index.iife.min.js"></script>
+    <!-- Buffer polyfill - must load before other modules -->
+    <script type="module">
+      import { Buffer } from 'https://esm.sh/buffer@6.0.3';
+      window.Buffer = Buffer;
+      console.log("Buffer polyfill loaded successfully");
+    </script>
+    <script type="module">
+      import * as anchor from "https://esm.sh/@coral-xyz/anchor";
+      window.anchor = anchor;
+      console.log("Anchor loaded:", anchor);
+    </script>
+    <script type="module">
+      import * as splToken from "https://esm.sh/@solana/spl-token";
+      window.splToken = splToken;
+      console.log("SPL Token loaded:", splToken);
+    </script>
     <script src="escrow-api.js"></script>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -29,7 +43,7 @@
 
         <!-- Main Content -->
         <div class="max-w-4xl mx-auto">
-            <div class="grid md:grid-cols-2 gap-8">
+            <div class="grid md:grid-cols-3 gap-8">
                 <!-- Create Escrow Section -->
                 <div class="bg-white rounded-lg shadow-lg p-6">
                     <h2 class="text-2xl font-semibold text-gray-800 mb-4">Create Escrow</h2>
@@ -104,9 +118,43 @@
                             </div>
                         </div>
                         
-                        <button type="submit" id="releaseTokensBtn" 
-                                class="w-full bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition duration-200">
-                            Release USDT to Buyer
+                        <div class="flex space-x-3">
+                            <button type="submit" id="releaseTokensBtn" 
+                                    class="flex-1 bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition duration-200">
+                                Release USDT to Buyer
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Cancel Escrow Section -->
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <h2 class="text-2xl font-semibold text-gray-800 mb-4">Cancel Escrow</h2>
+                    <p class="text-gray-600 mb-6">Cancel the escrow and get your USDT back if the buyer hasn't confirmed payment yet.</p>
+                    
+                    <form id="cancelEscrowForm" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Escrow Address</label>
+                            <input type="text" id="cancelEscrowAddress" 
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                   placeholder="Enter escrow address" required>
+                        </div>
+                        
+                        <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                            <div class="flex items-start">
+                                <svg class="w-5 h-5 text-red-600 mt-0.5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+                                </svg>
+                                <div>
+                                    <h4 class="text-sm font-medium text-red-800">Warning</h4>
+                                    <p class="text-sm text-red-700 mt-1">Only cancel if the buyer hasn't confirmed payment. Once cancelled, the escrow cannot be resumed.</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <button type="submit" id="cancelEscrowBtn" 
+                                class="w-full bg-red-600 text-white py-3 px-4 rounded-lg hover:bg-red-700 focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition duration-200">
+                            Cancel Escrow & Get USDT Back
                         </button>
                     </form>
                 </div>
@@ -169,7 +217,7 @@
 
         function initializeEscrowAPI() {
             try {
-                const connection = new Connection('https://api.devnet.solana.com', 'confirmed');
+                const connection = new solanaWeb3.Connection('https://api.devnet.solana.com', 'confirmed');
                 escrowAPI = new EscrowAPI(connection, 'Bua4jWEfUYb3QcaWnfJEbG4KKv6C1SqJSGFr5KCntZDW', 'devnet');
                 console.log('Escrow API initialized');
             } catch (error) {
@@ -187,6 +235,9 @@
             
             // Release tokens form
             document.getElementById('releaseTokensForm').addEventListener('submit', handleReleaseTokens);
+            
+            // Cancel escrow form
+            document.getElementById('cancelEscrowForm').addEventListener('submit', handleCancelEscrow);
         }
 
         async function connectWallet() {
@@ -203,7 +254,7 @@
                 `;
                 
                 // Get USDT balance
-                const balance = await escrowAPI.getTokenBalance(wallet.publicKey, new PublicKey(USDT_MINT));
+                const balance = await escrowAPI.getTokenBalance(wallet.publicKey, new solanaWeb3.PublicKey(USDT_MINT));
                 const formattedBalance = escrowAPI.formatTokenAmount(balance);
                 document.getElementById('usdtBalance').innerHTML = `
                     <p><strong>Balance:</strong> ${formattedBalance} USDT</p>
@@ -254,8 +305,8 @@
                 // Create escrow
                 const result = await escrowAPI.escrowCreate(
                     wallet,
-                    new PublicKey(buyerWallet),
-                    new PublicKey(USDT_MINT),
+                    new solanaWeb3.PublicKey(buyerWallet),
+                    new solanaWeb3.PublicKey(USDT_MINT),
                     amount
                 );
                 
@@ -291,7 +342,7 @@
             try {
                 escrowAPI.clearAlerts();
                 const button = document.getElementById('releaseTokensBtn');
-                escrowAPI.showLoading(button, 'Releasing Tokens...');
+                escrowAPI.showLoading(button, 'Checking Escrow Status...');
                 
                 const escrowAddress = document.getElementById('escrowAddress').value;
                 const buyerWallet = document.getElementById('releaseBuyerWallet').value;
@@ -305,12 +356,22 @@
                     throw new Error('Please enter a valid buyer wallet address');
                 }
                 
+                // Check if escrow can be released
+                const escrowStatus = await escrowAPI.canReleaseEscrow(new solanaWeb3.PublicKey(escrowAddress));
+                console.log('📊 Escrow status:', escrowStatus);
+                
+                if (!escrowStatus.canRelease) {
+                    throw new Error(escrowStatus.message);
+                }
+                
+                escrowAPI.showLoading(button, 'Releasing Tokens...');
+                
                 // Release tokens
                 const result = await escrowAPI.escrowRelease(
                     wallet,
-                    new PublicKey(buyerWallet),
-                    new PublicKey(USDT_MINT),
-                    new PublicKey(escrowAddress)
+                    new solanaWeb3.PublicKey(buyerWallet),
+                    new solanaWeb3.PublicKey(USDT_MINT),
+                    new solanaWeb3.PublicKey(escrowAddress)
                 );
                 
                 escrowAPI.hideLoading(button, 'Release USDT to Buyer');
@@ -323,7 +384,7 @@
                 document.getElementById('releaseTokensForm').reset();
                 
                 // Refresh balance
-                const balance = await escrowAPI.getTokenBalance(wallet.publicKey, new PublicKey(USDT_MINT));
+                const balance = await escrowAPI.getTokenBalance(wallet.publicKey, new solanaWeb3.PublicKey(USDT_MINT));
                 const formattedBalance = escrowAPI.formatTokenAmount(balance);
                 document.getElementById('usdtBalance').innerHTML = `
                     <p><strong>Balance:</strong> ${formattedBalance} USDT</p>
@@ -334,6 +395,57 @@
                 escrowAPI.showError('Failed to release tokens: ' + error.message);
                 const button = document.getElementById('releaseTokensBtn');
                 escrowAPI.hideLoading(button, 'Release USDT to Buyer');
+            }
+        }
+
+        async function handleCancelEscrow(event) {
+            event.preventDefault();
+            
+            if (!wallet) {
+                escrowAPI.showError('Please connect your wallet first.');
+                return;
+            }
+            
+            try {
+                escrowAPI.clearAlerts();
+                const button = document.getElementById('cancelEscrowBtn');
+                escrowAPI.showLoading(button, 'Cancelling Escrow...');
+                
+                const escrowAddress = document.getElementById('cancelEscrowAddress').value;
+                
+                // Validate inputs
+                if (!escrowAddress || escrowAddress.length < 32) {
+                    throw new Error('Please enter a valid escrow address');
+                }
+                
+                // Cancel escrow
+                const result = await escrowAPI.escrowCancel(
+                    wallet,
+                    new solanaWeb3.PublicKey(USDT_MINT),
+                    new solanaWeb3.PublicKey(escrowAddress)
+                );
+                
+                escrowAPI.hideLoading(button, 'Cancel Escrow & Get USDT Back');
+                escrowAPI.showSuccess(
+                    'Escrow cancelled successfully! USDT returned to your wallet.',
+                    result.explorerUrl
+                );
+                
+                // Clear form
+                document.getElementById('cancelEscrowForm').reset();
+                
+                // Refresh balance
+                const balance = await escrowAPI.getTokenBalance(wallet.publicKey, new solanaWeb3.PublicKey(USDT_MINT));
+                const formattedBalance = escrowAPI.formatTokenAmount(balance);
+                document.getElementById('usdtBalance').innerHTML = `
+                    <p><strong>Balance:</strong> ${formattedBalance} USDT</p>
+                `;
+                
+            } catch (error) {
+                console.error('Failed to cancel escrow:', error);
+                escrowAPI.showError('Failed to cancel escrow: ' + error.message);
+                const button = document.getElementById('cancelEscrowBtn');
+                escrowAPI.hideLoading(button, 'Cancel Escrow & Get USDT Back');
             }
         }
     </script>

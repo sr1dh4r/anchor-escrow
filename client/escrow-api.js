@@ -16,13 +16,13 @@
 class EscrowAPI {
     constructor(connection, programId, network = 'devnet') {
         this.connection = connection;
-        this.programId = new PublicKey(programId);
+        this.programId = new solanaWeb3.PublicKey(programId);
         this.network = network;
         this.program = null;
         this.provider = null;
         
         // Platform wallet (hardcoded in program)
-        this.platformWallet = new PublicKey('CkjSZdXopqgh7jkPFn8MxdU7QKwfYdjQNNwbYABFpCx2');
+        this.platformWallet = new solanaWeb3.PublicKey('CkjSZdXopqgh7jkPFn8MxdU7QKwfYdjQNNwbYABFpCx2');
         
         // Initialize Anchor program
         this.initializeProgram();
@@ -41,9 +41,16 @@ class EscrowAPI {
             );
             anchor.setProvider(this.provider);
             
-            // Load the program
-            const idl = await anchor.Program.fetchIdl(this.programId, this.provider);
-            this.program = new anchor.Program(idl, this.programId, this.provider);
+            // Load the program using local IDL file
+            const idlResponse = await fetch('./anchor_escrow.json');
+            const idl = await idlResponse.json();
+            
+            this.program = new anchor.Program(idl, this.provider);
+            
+            // Alert about IDL file management
+            console.warn('⚠️ IMPORTANT: Keep anchor_escrow.json updated!');
+            console.warn('   - Update after program changes: cp target/idl/anchor_escrow.json client/anchor_escrow.json');
+            console.warn('   - Outdated IDL may cause transaction failures');
             
             console.log('✅ Escrow API initialized successfully');
         } catch (error) {
@@ -72,18 +79,18 @@ class EscrowAPI {
             }
             
             // Get associated token accounts
-            const sellerAta = getAssociatedTokenAddressSync(tokenMint, sellerWallet.publicKey);
-            const buyerAta = getAssociatedTokenAddressSync(tokenMint, buyerWallet);
-            const platformAta = getAssociatedTokenAddressSync(tokenMint, this.platformWallet);
+            const sellerAta = splToken.getAssociatedTokenAddressSync(tokenMint, sellerWallet.publicKey);
+            const buyerAta = splToken.getAssociatedTokenAddressSync(tokenMint, buyerWallet);
+            const platformAta = splToken.getAssociatedTokenAddressSync(tokenMint, this.platformWallet);
             
             // Derive escrow account
-            const escrow = PublicKey.findProgramAddressSync(
+            const escrow = solanaWeb3.PublicKey.findProgramAddressSync(
                 [Buffer.from("state"), new anchor.BN(seed).toArrayLike(Buffer, "le", 8)],
                 this.programId
             )[0];
             
             // Derive vault account
-            const vault = getAssociatedTokenAddressSync(tokenMint, escrow, true);
+            const vault = splToken.getAssociatedTokenAddressSync(tokenMint, escrow, true);
             
             // Prepare accounts
             const accounts = {
@@ -99,9 +106,9 @@ class EscrowAPI {
                 escrow: escrow,
                 vault: vault,
                 platformWallet: this.platformWallet,
-                associatedTokenprogram: ASSOCIATED_TOKEN_PROGRAM_ID,
-                tokenProgram: TOKEN_PROGRAM_ID,
-                systemProgram: SystemProgram.programId,
+                associatedTokenprogram: splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
+                tokenProgram: splToken.TOKEN_PROGRAM_ID,
+                systemProgram: solanaWeb3.SystemProgram.programId,
             };
             
             // Execute initialize instruction
@@ -112,7 +119,6 @@ class EscrowAPI {
                     new anchor.BN(0) // takerAmount = 0 for one-sided escrow
                 )
                 .accounts(accounts)
-                .signers([sellerWallet])
                 .rpc();
             
             // Confirm transaction
@@ -148,6 +154,10 @@ class EscrowAPI {
     async escrowConfirmPayment(buyerWallet, escrow, tokenMint) {
         try {
             console.log('💳 Confirming off-chain payment...');
+            console.log('📊 Account details:');
+            console.log('  - taker (buyer):', buyerWallet.publicKey.toString());
+            console.log('  - escrow:', escrow.toString());
+            console.log('  - mintA:', tokenMint.toString());
             
             // Prepare accounts
             const accounts = {
@@ -156,11 +166,22 @@ class EscrowAPI {
                 mintA: tokenMint,
             };
             
+            // Verify escrow account exists and is owned by our program
+            const escrowAccountInfo = await this.connection.getAccountInfo(escrow);
+            if (!escrowAccountInfo) {
+                throw new Error('Escrow account not found. Please check the escrow address.');
+            }
+            
+            if (escrowAccountInfo.owner.toString() !== this.program.programId.toString()) {
+                throw new Error(`Escrow account is owned by wrong program. Expected: ${this.program.programId.toString()}, Got: ${escrowAccountInfo.owner.toString()}`);
+            }
+            
+            console.log('✅ Escrow account verified');
+            
             // Execute confirm payment instruction
             const signature = await this.program.methods
                 .confirmPayment()
                 .accounts(accounts)
-                .signers([buyerWallet])
                 .rpc();
             
             // Confirm transaction
@@ -194,13 +215,21 @@ class EscrowAPI {
         try {
             console.log('🔄 Releasing tokens to buyer...');
             
+            // Check escrow state first
+            const escrowData = await this.getEscrowData(escrow);
+            console.log('📊 Escrow state:', escrowData);
+            
+            if (!escrowData.paymentConfirmed) {
+                throw new Error('Payment not confirmed yet. Buyer must confirm payment before releasing tokens.');
+            }
+            
             // Get associated token accounts
-            const sellerAta = getAssociatedTokenAddressSync(tokenMint, sellerWallet.publicKey);
-            const buyerAta = getAssociatedTokenAddressSync(tokenMint, buyerWallet);
-            const platformAta = getAssociatedTokenAddressSync(tokenMint, this.platformWallet);
+            const sellerAta = splToken.getAssociatedTokenAddressSync(tokenMint, sellerWallet.publicKey);
+            const buyerAta = splToken.getAssociatedTokenAddressSync(tokenMint, buyerWallet);
+            const platformAta = splToken.getAssociatedTokenAddressSync(tokenMint, this.platformWallet);
             
             // Derive vault account
-            const vault = getAssociatedTokenAddressSync(tokenMint, escrow, true);
+            const vault = splToken.getAssociatedTokenAddressSync(tokenMint, escrow, true);
             
             // Prepare accounts
             const accounts = {
@@ -216,16 +245,15 @@ class EscrowAPI {
                 escrow: escrow,
                 vault: vault,
                 platformWallet: this.platformWallet,
-                associatedTokenprogram: ASSOCIATED_TOKEN_PROGRAM_ID,
-                tokenProgram: TOKEN_PROGRAM_ID,
-                systemProgram: SystemProgram.programId,
+                associatedTokenprogram: splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
+                tokenProgram: splToken.TOKEN_PROGRAM_ID,
+                systemProgram: solanaWeb3.SystemProgram.programId,
             };
             
             // Execute exchange instruction
             const signature = await this.program.methods
                 .exchange()
                 .accounts(accounts)
-                .signers([sellerWallet])
                 .rpc();
             
             // Confirm transaction
@@ -259,11 +287,11 @@ class EscrowAPI {
             console.log('❌ Cancelling escrow...');
             
             // Get associated token accounts
-            const sellerAta = getAssociatedTokenAddressSync(tokenMint, sellerWallet.publicKey);
-            const platformAta = getAssociatedTokenAddressSync(tokenMint, this.platformWallet);
+            const sellerAta = splToken.getAssociatedTokenAddressSync(tokenMint, sellerWallet.publicKey);
+            const platformAta = splToken.getAssociatedTokenAddressSync(tokenMint, this.platformWallet);
             
             // Derive vault account
-            const vault = getAssociatedTokenAddressSync(tokenMint, escrow, true);
+            const vault = splToken.getAssociatedTokenAddressSync(tokenMint, escrow, true);
             
             // Prepare accounts
             const accounts = {
@@ -274,16 +302,15 @@ class EscrowAPI {
                 escrow: escrow,
                 vault: vault,
                 platformWallet: this.platformWallet,
-                associatedTokenprogram: ASSOCIATED_TOKEN_PROGRAM_ID,
-                tokenProgram: TOKEN_PROGRAM_ID,
-                systemProgram: SystemProgram.programId,
+                associatedTokenprogram: splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
+                tokenProgram: splToken.TOKEN_PROGRAM_ID,
+                systemProgram: solanaWeb3.SystemProgram.programId,
             };
             
             // Execute cancel instruction
             const signature = await this.program.methods
                 .cancel()
                 .accounts(accounts)
-                .signers([sellerWallet])
                 .rpc();
             
             // Confirm transaction
@@ -331,6 +358,46 @@ class EscrowAPI {
     }
 
     /**
+     * Derive escrow address from seed
+     * 
+     * @param {number} seed - Escrow seed
+     * @returns {PublicKey} Escrow account address
+     */
+    deriveEscrowAddress(seed) {
+        const [escrowAddress] = solanaWeb3.PublicKey.findProgramAddressSync(
+            [Buffer.from("state"), Buffer.from(seed.toString().padStart(8, '0').slice(-8), 'hex')],
+            this.program.programId
+        );
+        return escrowAddress;
+    }
+
+    /**
+     * Check if escrow can be released
+     * 
+     * @param {PublicKey} escrow - Escrow account address
+     * @returns {Promise<Object>} Escrow status and details
+     */
+    async canReleaseEscrow(escrow) {
+        try {
+            const escrowData = await this.getEscrowData(escrow);
+            return {
+                canRelease: escrowData.paymentConfirmed,
+                escrowData: escrowData,
+                message: escrowData.paymentConfirmed 
+                    ? 'Ready to release - payment confirmed' 
+                    : 'Cannot release - payment not confirmed yet'
+            };
+        } catch (error) {
+            console.error('Failed to check escrow status:', error);
+            return {
+                canRelease: false,
+                escrowData: null,
+                message: 'Failed to load escrow data'
+            };
+        }
+    }
+
+    /**
      * Get token balance for a wallet
      * 
      * @param {PublicKey} wallet - Wallet public key
@@ -339,7 +406,7 @@ class EscrowAPI {
      */
     async getTokenBalance(wallet, tokenMint) {
         try {
-            const ata = getAssociatedTokenAddressSync(tokenMint, wallet);
+            const ata = splToken.getAssociatedTokenAddressSync(tokenMint, wallet);
             const balance = await this.connection.getTokenAccountBalance(ata);
             return parseInt(balance.value.amount);
         } catch (error) {
@@ -503,7 +570,7 @@ class EscrowAPI {
      * @returns {Keypair} Generated keypair
      */
     createTestKeypair() {
-        return Keypair.generate();
+        return solanaWeb3.Keypair.generate();
     }
 }
 
@@ -517,7 +584,7 @@ if (typeof module !== 'undefined' && module.exports) {
 // Example usage (commented out)
 /*
 // Initialize the API
-const connection = new Connection('https://api.devnet.solana.com', 'confirmed');
+const connection = new solanaWeb3.Connection('https://api.devnet.solana.com', 'confirmed');
 const escrowAPI = new EscrowAPI(connection, 'Bua4jWEfUYb3QcaWnfJEbG4KKv6C1SqJSGFr5KCntZDW');
 
 // Example workflow:

@@ -6,8 +6,16 @@
     <title>USDT-INR Escrow - Buyer</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
-    <script src="https://unpkg.com/@coral-xyz/anchor@latest/dist/index.iife.min.js"></script>
-    <script src="https://unpkg.com/@solana/spl-token@latest/lib/index.iife.min.js"></script>
+    <script type="module">
+      import * as anchor from "https://esm.sh/@coral-xyz/anchor";
+      window.anchor = anchor;
+      console.log("Anchor loaded:", anchor);
+    </script>
+    <script type="module">
+      import * as splToken from "https://esm.sh/@solana/spl-token";
+      window.splToken = splToken;
+      console.log("SPL Token loaded:", splToken);
+    </script>
     <script src="escrow-api.js"></script>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -181,7 +189,7 @@
 
         function initializeEscrowAPI() {
             try {
-                const connection = new Connection('https://api.devnet.solana.com', 'confirmed');
+                const connection = new solanaWeb3.Connection('https://api.devnet.solana.com', 'confirmed');
                 escrowAPI = new EscrowAPI(connection, 'Bua4jWEfUYb3QcaWnfJEbG4KKv6C1SqJSGFr5KCntZDW', 'devnet');
                 console.log('Escrow API initialized');
             } catch (error) {
@@ -215,7 +223,7 @@
                 `;
                 
                 // Get USDT balance
-                const balance = await escrowAPI.getTokenBalance(wallet.publicKey, new PublicKey(USDT_MINT));
+                const balance = await escrowAPI.getTokenBalance(wallet.publicKey, new solanaWeb3.PublicKey(USDT_MINT));
                 const formattedBalance = escrowAPI.formatTokenAmount(balance);
                 document.getElementById('usdtBalance').innerHTML = `
                     <p><strong>Balance:</strong> ${formattedBalance} USDT</p>
@@ -258,8 +266,8 @@
                 // Confirm payment
                 const result = await escrowAPI.escrowConfirmPayment(
                     wallet,
-                    new PublicKey(escrowAddress),
-                    new PublicKey(USDT_MINT)
+                    new solanaWeb3.PublicKey(escrowAddress),
+                    new solanaWeb3.PublicKey(USDT_MINT)
                 );
                 
                 escrowAPI.hideLoading(button, 'Confirm INR Payment');
@@ -295,7 +303,7 @@
                 }
                 
                 // Get escrow data
-                const escrowData = await escrowAPI.getEscrowData(new PublicKey(escrowAddress));
+                const escrowData = await escrowAPI.getEscrowData(new solanaWeb3.PublicKey(escrowAddress));
                 
                 escrowAPI.hideLoading(button, 'Check Status');
                 

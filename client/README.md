@@ -14,6 +14,28 @@ The Escrow API implements a one-sided escrow pattern for USDT-INR trading:
 
 Before using this API, ensure you have the following dependencies loaded:
 
+## ⚠️ Important: IDL File Management
+
+The client uses a local IDL file (`anchor_escrow.json`) to interact with the Solana program. **This file must be kept in sync with the deployed program.**
+
+### When to Update the IDL File:
+- After any changes to the Solana program code
+- After rebuilding the program with `anchor build`
+- When deploying a new version of the program
+
+### How to Update:
+```bash
+# After building the program, copy the new IDL file
+cp target/idl/anchor_escrow.json client/anchor_escrow.json
+```
+
+### What Happens if IDL is Outdated:
+- Transaction calls may fail with unexpected errors
+- Account structures may not match the deployed program
+- The client may not work correctly with the updated program
+
+**Always ensure the IDL file matches your deployed program version!**
+
 ```html
 <!-- Solana Web3.js -->
 <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
@@ -36,7 +58,7 @@ npm install @solana/web3.js @coral-xyz/anchor @solana/spl-token
 
 ```javascript
 // Create connection
-const connection = new Connection('https://api.devnet.solana.com', 'confirmed');
+const connection = new solanaWeb3.Connection('https://api.devnet.solana.com', 'confirmed');
 
 // Initialize Escrow API
 const escrowAPI = new EscrowAPI(
@@ -50,7 +72,7 @@ const escrowAPI = new EscrowAPI(
 
 ```javascript
 // Example token mint (USDT on devnet)
-const tokenMint = new PublicKey('J1UjsVLRwGcpoCjexjDaHWVoj9F3TbdCpwVYNUYkww6y');
+const tokenMint = new solanaWeb3.PublicKey('J1UjsVLRwGcpoCjexjDaHWVoj9F3TbdCpwVYNUYkww6y');
 
 // Create escrow (Seller)
 const createResult = await escrowAPI.escrowCreate(
@@ -218,13 +240,13 @@ Gets SOL balance for a wallet.
 async function completeEscrowWorkflow() {
     try {
         // 1. Initialize API
-        const connection = new Connection('https://api.devnet.solana.com', 'confirmed');
+        const connection = new solanaWeb3.Connection('https://api.devnet.solana.com', 'confirmed');
         const escrowAPI = new EscrowAPI(connection, 'Bua4jWEfUYb3QcaWnfJEbG4KKv6C1SqJSGFr5KCntZDW');
         
         // 2. Define participants and token
-        const sellerWallet = Keypair.generate(); // In real app, use user's wallet
-        const buyerWallet = Keypair.generate();
-        const tokenMint = new PublicKey('J1UjsVLRwGcpoCjexjDaHWVoj9F3TbdCpwVYNUYkww6y');
+        const sellerWallet = solanaWeb3.Keypair.generate(); // In real app, use user's wallet
+        const buyerWallet = solanaWeb3.Keypair.generate();
+        const tokenMint = new solanaWeb3.PublicKey('J1UjsVLRwGcpoCjexjDaHWVoj9F3TbdCpwVYNUYkww6y');
         
         // 3. Create escrow (Seller deposits USDT)
         console.log('Creating escrow...');
@@ -288,13 +310,13 @@ async function completeEscrowWorkflow() {
 
 ### Devnet (Testing)
 ```javascript
-const connection = new Connection('https://api.devnet.solana.com', 'confirmed');
+const connection = new solanaWeb3.Connection('https://api.devnet.solana.com', 'confirmed');
 const programId = 'Bua4jWEfUYb3QcaWnfJEbG4KKv6C1SqJSGFr5KCntZDW';
 ```
 
 ### Mainnet (Production)
 ```javascript
-const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
+const connection = new solanaWeb3.Connection('https://api.mainnet-beta.solana.com', 'confirmed');
 const programId = 'Bua4jWEfUYb3QcaWnfJEbG4KKv6C1SqJSGFr5KCntZDW';
 ```
 
