@@ -22,6 +22,11 @@ class WalletAPI {
         this.mnemonic = null;
         this.walletName = null;
         
+        // WebSocket monitoring
+        this.balanceSubscriptions = new Map(); // tokenMint -> subscriptionId
+        this.transactionCallbacks = new Map(); // transactionId -> callback
+        this.isMonitoring = false;
+        
         // Token configurations - easily extensible for new tokens
         this.tokens = {
             'USDT': {
@@ -938,6 +943,152 @@ class WalletAPI {
         } catch (error) {
             console.error('Failed to copy to clipboard:', error);
             this.showError('Failed to copy to clipboard');
+        }
+    }
+
+    /**
+     * Start WebSocket monitoring for balance changes
+     */
+    startBalanceMonitoring() {
+        if (!this.wallet || this.isMonitoring) {
+            return;
+        }
+
+        console.log('🔍 Starting balance monitoring...');
+        this.isMonitoring = true;
+
+        // Monitor SOL balance
+        this.monitorSolBalance();
+
+        // Monitor token balances
+        Object.keys(this.tokens).forEach(tokenSymbol => {
+            this.monitorTokenBalance(tokenSymbol);
+        });
+    }
+
+    /**
+     * Stop WebSocket monitoring
+     */
+    stopBalanceMonitoring() {
+        if (!this.isMonitoring) {
+            return;
+        }
+
+        console.log('🛑 Stopping balance monitoring...');
+        
+        // Unsubscribe from all token accounts
+        this.balanceSubscriptions.forEach((subscriptionId, tokenMint) => {
+            this.connection.removeAccountChangeListener(subscriptionId);
+        });
+        
+        this.balanceSubscriptions.clear();
+        this.transactionCallbacks.clear();
+        this.isMonitoring = false;
+    }
+
+    /**
+     * Monitor SOL balance changes
+     */
+    monitorSolBalance() {
+        if (!this.wallet) return;
+
+        const subscriptionId = this.connection.onAccountChange(
+            this.wallet.publicKey,
+            (accountInfo) => {
+                console.log('💰 SOL balance changed');
+                console.log('📋 SOL accountInfo:', accountInfo);
+                this.onBalanceChange('SOL', accountInfo);
+            },
+            'finalized'
+        );
+
+        this.balanceSubscriptions.set('SOL', subscriptionId);
+    }
+
+    /**
+     * Monitor token balance changes
+     */
+    async monitorTokenBalance(tokenSymbol) {
+        if (!this.wallet) return;
+
+        try {
+            const tokenMint = this.tokens[tokenSymbol].mint;
+            const ata = splToken.getAssociatedTokenAddressSync(
+                new solanaWeb3.PublicKey(tokenMint),
+                this.wallet.publicKey
+            );
+
+            const subscriptionId = this.connection.onAccountChange(
+                ata,
+                (accountInfo) => {
+                    console.log(`💰 ${tokenSymbol} balance changed`);
+                    console.log(`📋 ${tokenSymbol} accountInfo:`, accountInfo);
+                    this.onBalanceChange(tokenSymbol, accountInfo);
+                },
+                'finalized'
+            );
+
+            this.balanceSubscriptions.set(tokenMint, subscriptionId);
+        } catch (error) {
+            console.log(`⚠️ Could not monitor ${tokenSymbol} balance:`, error.message);
+        }
+    }
+
+    /**
+     * Handle balance change events
+     */
+    async onBalanceChange(tokenSymbol, accountInfo) {
+        console.log(`💰 Balance change detected for ${tokenSymbol}`);
+        
+        // Get current balance to compare
+        let currentBalance;
+        try {
+            if (tokenSymbol === 'SOL') {
+                currentBalance = await this.getSolBalance();
+            } else {
+                currentBalance = await this.getTokenBalance(tokenSymbol);
+            }
+            console.log(`📊 Current ${tokenSymbol} balance: ${currentBalance}`);
+        } catch (error) {
+            console.log(`⚠️ Could not get current balance for ${tokenSymbol}:`, error.message);
+        }
+
+        // Trigger any registered callbacks
+        this.transactionCallbacks.forEach((callback, transactionId) => {
+            if (callback.tokenSymbol === tokenSymbol) {
+                console.log(`📞 Triggering callback for transaction ${transactionId}`);
+                callback.function();
+                this.transactionCallbacks.delete(transactionId);
+            }
+        });
+
+        // Trigger global balance update event
+        if (typeof window !== 'undefined' && window.dispatchEvent) {
+            console.log(`🔄 Dispatching global balanceChanged event for ${tokenSymbol}`);
+            window.dispatchEvent(new CustomEvent('balanceChanged', {
+                detail: { tokenSymbol, accountInfo, currentBalance }
+            }));
+        }
+    }
+
+    /**
+     * Register callback for specific transaction
+     */
+    registerTransactionCallback(transactionId, tokenSymbol, callback) {
+        this.transactionCallbacks.set(transactionId, {
+            tokenSymbol,
+            function: callback
+        });
+        console.log(`📝 Registered callback for transaction ${transactionId} (${tokenSymbol})`);
+    }
+
+    /**
+     * Remove transaction callback
+     */
+    removeTransactionCallback(transactionId) {
+        if (this.transactionCallbacks.has(transactionId)) {
+            this.transactionCallbacks.delete(transactionId);
+            console.log(`🗑️ Removed callback for transaction ${transactionId}`);
         }
     }
 }

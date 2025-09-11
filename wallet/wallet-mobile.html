@@ -156,6 +156,27 @@
         </button>
     </div>
 
+    <!-- Transaction Pending Half Sheet -->
+    <div id="transactionPendingSheet" class="half-sheet">
+        <div class="p-4">
+            <div class="flex items-center justify-center mb-6">
+                <h3 class="text-lg font-semibold">Transaction Pending</h3>
+            </div>
+            <div class="text-center space-y-4">
+                <div class="flex justify-center">
+                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+                </div>
+                <div class="text-gray-400">
+                    <div class="font-medium">Processing transaction...</div>
+                    <div class="text-sm">Please wait while we confirm on the blockchain</div>
+                </div>
+                <div id="pendingTransactionId" class="text-xs text-gray-500 bg-gray-100 p-2 rounded font-mono">
+                    <!-- Transaction ID will be shown here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Transaction Result Half Sheet -->
     <div id="transactionResultSheet" class="half-sheet">
         <div class="p-4">
@@ -169,6 +190,39 @@
             </div>
             <div id="transactionResultContent" class="space-y-4">
                 <!-- Content will be populated dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Disconnect Confirmation Half Sheet -->
+    <div id="disconnectConfirmSheet" class="half-sheet">
+        <div class="p-4">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-lg font-semibold">Disconnect Wallet</h3>
+                <button id="closeDisconnectConfirmSheet" class="p-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            <div class="space-y-4">
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg class="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                        </svg>
+                    </div>
+                    <h4 class="text-lg font-semibold mb-2">Are you sure?</h4>
+                    <p class="text-gray-600 mb-6">You will need to reconnect your wallet to access your funds again.</p>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="cancelDisconnect()" class="flex-1 bg-gray-200 text-gray-800 py-3 rounded-lg font-medium">
+                        Cancel
+                    </button>
+                    <button onclick="confirmDisconnect()" class="flex-1 bg-red-600 text-white py-3 rounded-lg font-medium">
+                        Disconnect
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -432,6 +486,53 @@
         function initializeWalletAPI() {
             const connection = new solanaWeb3.Connection('https://api.devnet.solana.com');
             walletAPI = new WalletAPI(connection, 'devnet');
+            
+            // Listen for balance changes from WebSocket monitoring
+            window.addEventListener('balanceChanged', (event) => {
+                console.log('🔄 Balance changed, refreshing UI...');
+                console.log('📊 Event details:', event.detail);
+                
+                // Add a small delay to allow blockchain propagation
+                loadWalletData();
+            });
+        }
+
+        // Toast notification system
+        function showToast(message, type = 'info') {
+            // Remove existing toast if any
+            const existingToast = document.getElementById('toast');
+            if (existingToast) {
+                existingToast.remove();
+            }
+
+            // Create toast element
+            const toast = document.createElement('div');
+            toast.id = 'toast';
+            toast.className = `fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg text-white text-sm font-medium transition-all duration-300 ${
+                type === 'success' ? 'bg-green-600' : 
+                type === 'error' ? 'bg-red-600' : 
+                type === 'warning' ? 'bg-yellow-600' : 
+                'bg-blue-600'
+            }`;
+            toast.textContent = message;
+            
+            // Add to page
+            document.body.appendChild(toast);
+            
+            // Show toast
+            setTimeout(() => {
+                toast.classList.add('opacity-100', 'translate-y-0');
+            }, 10);
+            
+            // Auto remove after 3 seconds
+            setTimeout(() => {
+                toast.classList.remove('opacity-100', 'translate-y-0');
+                setTimeout(() => {
+                    if (toast.parentNode) {
+                        toast.remove();
+                    }
+                }, 300);
+            }, 3000);
         }
 
         // Show/hide half sheet
@@ -448,7 +549,7 @@
         // Hide all half sheets
         function hideAllSheets() {
             const sheets = ['connectWalletSheet', 'walletMenuSheet', 'sendTokenSheet', 'receiveTokenSheet', 
-                          'createWalletSheet', 'importWalletSheet', 'transactionResultSheet'];
+                          'createWalletSheet', 'importWalletSheet', 'transactionPendingSheet', 'transactionResultSheet', 'disconnectConfirmSheet'];
             sheets.forEach(sheet => hideHalfSheet(sheet));
         }
 
@@ -502,6 +603,9 @@
                 const usdtBalance = await walletAPI.getTokenBalance('USDT');
                 const walletName = walletAPI.getWalletName();
                 const address = walletAPI.wallet.publicKey.toString();
+
+                // Start WebSocket monitoring for balance changes
+                walletAPI.startBalanceMonitoring();
 
                 // Update header
                 document.getElementById('walletNameHeader').textContent = walletName;
@@ -573,6 +677,7 @@
             document.getElementById('closeCreateSheet').addEventListener('click', () => hideHalfSheet('createWalletSheet'));
             document.getElementById('closeImportSheet').addEventListener('click', () => hideHalfSheet('importWalletSheet'));
             document.getElementById('closeTransactionResultSheet').addEventListener('click', () => hideHalfSheet('transactionResultSheet'));
+            document.getElementById('closeDisconnectConfirmSheet').addEventListener('click', () => hideHalfSheet('disconnectConfirmSheet'));
             
             // Backdrop click
             document.getElementById('backdrop').addEventListener('click', hideAllSheets);
@@ -636,7 +741,7 @@
                 
             } catch (error) {
                 console.error('Failed to generate wallet:', error);
-                alert('Failed to generate wallet: ' + error.message);
+                showToast('Failed to generate wallet: ' + error.message, 'error');
             }
         }
 
@@ -646,10 +751,10 @@
                 isConnected = true;
                 updateUI();
                 hideHalfSheet('createWalletSheet');
-                alert('Wallet created and loaded successfully!');
+                showToast('Wallet created and loaded successfully!', 'success');
             } catch (error) {
                 console.error('Failed to confirm wallet creation:', error);
-                alert('Failed to confirm wallet creation: ' + error.message);
+                showToast('Failed to confirm wallet creation: ' + error.message, 'error');
             }
         }
 
@@ -685,11 +790,11 @@
                 isConnected = true;
                 updateUI();
                 hideHalfSheet('importWalletSheet');
-                alert('Wallet imported successfully!');
+                showToast('Wallet imported successfully!', 'success');
                 
             } catch (error) {
                 console.error('Failed to import wallet:', error);
-                alert('Failed to import wallet: ' + error.message);
+                showToast('Failed to import wallet: ' + error.message, 'error');
             }
         }
 
@@ -730,14 +835,26 @@
 
         // Disconnect wallet
         async function disconnectWallet() {
-            if (!confirm('Are you sure you want to disconnect your wallet?')) {
-                return;
-            }
+            // Show confirmation modal
+            showHalfSheet('disconnectConfirmSheet');
+        }
+
+        // Confirm disconnect
+        async function confirmDisconnect() {
+            // Stop WebSocket monitoring
+            walletAPI.stopBalanceMonitoring();
             
             await walletAPI.disconnectWallet();
             isConnected = false;
             updateUI();
             hideHalfSheet('walletMenuSheet');
+            hideHalfSheet('disconnectConfirmSheet');
+            showToast('Wallet disconnected', 'info');
+        }
+
+        // Cancel disconnect
+        function cancelDisconnect() {
+            hideHalfSheet('disconnectConfirmSheet');
         }
 
         // Send tokens
@@ -748,7 +865,7 @@
                 const token = document.getElementById('sendToken').value;
                 
                 if (!recipient || !amount) {
-                    alert('Please fill in all fields');
+                    showToast('Please fill in all fields', 'warning');
                     return;
                 }
                 
@@ -756,7 +873,7 @@
                 try {
                     new solanaWeb3.PublicKey(recipient);
                 } catch (error) {
-                    alert('Invalid recipient address');
+                    showToast('Invalid recipient address', 'error');
                     return;
                 }
                 
@@ -766,22 +883,57 @@
                 sendBtn.textContent = 'Sending...';
                 sendBtn.disabled = true;
                 
-                let result;
+                // Hide send sheet and show pending sheet
+                hideHalfSheet('sendTokenSheet');
+                showTransactionPending();
+                
+                // Register callback BEFORE sending transaction using a generic ID
+                const callbackId = `pending_${token}_${Date.now()}`;
+                let result = null; // Initialize result variable
+                
+                // Create a callback that will be updated with the result
+                const callback = () => {
+                    console.log('🎉 Balance change detected, showing confirmed result');
+                    hideHalfSheet('transactionPendingSheet');
+                    if (result) {
+                        showTransactionResult(result);
+                    } else {
+                        console.log('⚠️ Result not available yet, waiting...');
+                        // Retry after a short delay
+                        setTimeout(() => {
+                            if (result) {
+                                showTransactionResult(result);
+                            }
+                        }, 100);
+                    }
+                };
+                
+                walletAPI.registerTransactionCallback(callbackId, token, callback);
+                
                 if (token === 'SOL') {
                     result = await walletAPI.sendSol(recipient, amount.toString());
                 } else {
                     result = await walletAPI.sendTokens(token, recipient, amount.toString());
                 }
                 
-                // Hide send sheet and show result
-                hideHalfSheet('sendTokenSheet');
-                showTransactionResult(result);
+                // Set a timeout fallback in case balance change isn't detected
+                setTimeout(() => {
+                    if (walletAPI.transactionCallbacks.has(callbackId)) {
+                        console.log('⏰ Timeout: showing confirmed result without balance change');
+                        walletAPI.removeTransactionCallback(callbackId);
+                        hideHalfSheet('transactionPendingSheet');
+                        showTransactionResult(result);
+                    }
+                }, 10000); // 10 second timeout
                 
                 // Refresh balances
                 await loadWalletData();
                 
             } catch (error) {
                 console.error('Failed to send tokens:', error);
+                
+                // Hide pending sheet if it's showing
+                hideHalfSheet('transactionPendingSheet');
                 
                 // Show error result
                 const errorResult = {
@@ -792,7 +944,6 @@
                     recipient: document.getElementById('recipientAddress').value
                 };
                 
-                hideHalfSheet('sendTokenSheet');
                 showTransactionResult(errorResult);
                 
             } finally {
@@ -803,13 +954,18 @@
             }
         }
 
+        // Show transaction pending
+        function showTransactionPending() {
+            showHalfSheet('transactionPendingSheet');
+        }
+
         // Show transaction result
         function showTransactionResult(result) {
             const title = document.getElementById('transactionResultTitle');
             const content = document.getElementById('transactionResultContent');
             
             if (result.success) {
-                title.textContent = 'Transaction Successful';
+                title.textContent = 'Transaction Confirmed';
                 title.className = 'text-lg font-semibold text-green-600';
                 
                 content.innerHTML = `
@@ -868,7 +1024,7 @@
         // Copy to clipboard
         function copyToClipboard(text) {
             navigator.clipboard.writeText(text).then(() => {
-                alert('Copied to clipboard!');
+                showToast('Copied to clipboard!', 'success');
             });
         }
 
