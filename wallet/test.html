@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wallet API Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
+    <script type="module">
+      import { Buffer } from 'https://esm.sh/buffer@6.0.3';
+      window.Buffer = Buffer;
+    </script>
+    <script type="module">
+      import * as anchor from "https://esm.sh/@coral-xyz/anchor";
+      window.anchor = anchor;
+    </script>
+    <script type="module">
+      import * as splToken from "https://esm.sh/@solana/spl-token";
+      window.splToken = splToken;
+    </script>
+    <script src="wallet-api.js"></script>
+</head>
+<body class="bg-gray-100 p-8">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold mb-8">Wallet API Test</h1>
+        
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">API Initialization Test</h2>
+            <button id="initTest" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+                Test API Initialization
+            </button>
+            <div id="initResult" class="mt-4 p-4 bg-gray-100 rounded hidden"></div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Token Configuration Test</h2>
+            <button id="tokenTest" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
+                Test Token Configuration
+            </button>
+            <div id="tokenResult" class="mt-4 p-4 bg-gray-100 rounded hidden"></div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Chain Configuration Test</h2>
+            <button id="chainTest" class="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">
+                Test Chain Configuration
+            </button>
+            <div id="chainResult" class="mt-4 p-4 bg-gray-100 rounded hidden"></div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Add Custom Token Test</h2>
+            <button id="addTokenTest" class="bg-yellow-600 text-white px-4 py-2 rounded hover:bg-yellow-700">
+                Test Adding Custom Token
+            </button>
+            <div id="addTokenResult" class="mt-4 p-4 bg-gray-100 rounded hidden"></div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <h2 class="text-xl font-semibold mb-4">Utility Functions Test</h2>
+            <button id="utilTest" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">
+                Test Utility Functions
+            </button>
+            <div id="utilResult" class="mt-4 p-4 bg-gray-100 rounded hidden"></div>
+        </div>
+    </div>
+
+    <script>
+        let walletAPI = null;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            setupEventListeners();
+        });
+
+        function setupEventListeners() {
+            document.getElementById('initTest').addEventListener('click', testInitialization);
+            document.getElementById('tokenTest').addEventListener('click', testTokenConfiguration);
+            document.getElementById('chainTest').addEventListener('click', testChainConfiguration);
+            document.getElementById('addTokenTest').addEventListener('click', testAddCustomToken);
+            document.getElementById('utilTest').addEventListener('click', testUtilityFunctions);
+        }
+
+        function testInitialization() {
+            try {
+                const connection = new solanaWeb3.Connection('https://api.devnet.solana.com', 'confirmed');
+                walletAPI = new WalletAPI(connection, 'devnet');
+                
+                const result = document.getElementById('initResult');
+                result.innerHTML = `
+                    <div class="text-green-600">
+                        ✅ Wallet API initialized successfully<br>
+                        Network: ${walletAPI.network}<br>
+                        Connection: ${walletAPI.connection.rpcEndpoint}
+                    </div>
+                `;
+                result.classList.remove('hidden');
+            } catch (error) {
+                const result = document.getElementById('initResult');
+                result.innerHTML = `<div class="text-red-600">❌ Failed to initialize: ${error.message}</div>`;
+                result.classList.remove('hidden');
+            }
+        }
+
+        function testTokenConfiguration() {
+            try {
+                if (!walletAPI) {
+                    throw new Error('Wallet API not initialized');
+                }
+                
+                const tokens = walletAPI.getSupportedTokens();
+                const result = document.getElementById('tokenResult');
+                
+                let html = '<div class="text-green-600">✅ Token configuration loaded:</div><ul class="mt-2">';
+                for (const [symbol, config] of Object.entries(tokens)) {
+                    html += `<li class="ml-4">${config.icon} ${symbol}: ${config.name} (${config.mint})</li>`;
+                }
+                html += '</ul>';
+                
+                result.innerHTML = html;
+                result.classList.remove('hidden');
+            } catch (error) {
+                const result = document.getElementById('tokenResult');
+                result.innerHTML = `<div class="text-red-600">❌ Failed to load tokens: ${error.message}</div>`;
+                result.classList.remove('hidden');
+            }
+        }
+
+        function testChainConfiguration() {
+            try {
+                if (!walletAPI) {
+                    throw new Error('Wallet API not initialized');
+                }
+                
+                const chains = walletAPI.getSupportedChains();
+                const result = document.getElementById('chainResult');
+                
+                let html = '<div class="text-green-600">✅ Chain configuration loaded:</div><ul class="mt-2">';
+                for (const [chainId, config] of Object.entries(chains)) {
+                    html += `<li class="ml-4">${config.icon} ${config.name} (${chainId})</li>`;
+                }
+                html += '</ul>';
+                
+                result.innerHTML = html;
+                result.classList.remove('hidden');
+            } catch (error) {
+                const result = document.getElementById('chainResult');
+                result.innerHTML = `<div class="text-red-600">❌ Failed to load chains: ${error.message}</div>`;
+                result.classList.remove('hidden');
+            }
+        }
+
+        function testAddCustomToken() {
+            try {
+                if (!walletAPI) {
+                    throw new Error('Wallet API not initialized');
+                }
+                
+                // Add a test token
+                walletAPI.addToken('TEST', 'TestMintAddress123456789', 9, 'Test Token', '🧪');
+                
+                const tokens = walletAPI.getSupportedTokens();
+                const result = document.getElementById('addTokenResult');
+                
+                let html = '<div class="text-green-600">✅ Custom token added successfully:</div><ul class="mt-2">';
+                for (const [symbol, config] of Object.entries(tokens)) {
+                    html += `<li class="ml-4">${config.icon} ${symbol}: ${config.name} (${config.mint})</li>`;
+                }
+                html += '</ul>';
+                
+                result.innerHTML = html;
+                result.classList.remove('hidden');
+            } catch (error) {
+                const result = document.getElementById('addTokenResult');
+                result.innerHTML = `<div class="text-red-600">❌ Failed to add token: ${error.message}</div>`;
+                result.classList.remove('hidden');
+            }
+        }
+
+        function testUtilityFunctions() {
+            try {
+                if (!walletAPI) {
+                    throw new Error('Wallet API not initialized');
+                }
+                
+                const result = document.getElementById('utilResult');
+                
+                // Test formatTokenAmount
+                const formatted = walletAPI.formatTokenAmount(1000000, 6);
+                const parsed = walletAPI.parseTokenAmount('1.5', 6);
+                
+                let html = '<div class="text-green-600">✅ Utility functions working:</div><ul class="mt-2">';
+                html += `<li class="ml-4">formatTokenAmount(1000000, 6) = ${formatted}</li>`;
+                html += `<li class="ml-4">parseTokenAmount('1.5', 6) = ${parsed}</li>`;
+                html += '</ul>';
+                
+                result.innerHTML = html;
+                result.classList.remove('hidden');
+            } catch (error) {
+                const result = document.getElementById('utilResult');
+                result.innerHTML = `<div class="text-red-600">❌ Failed to test utilities: ${error.message}</div>`;
+                result.classList.remove('hidden');
+            }
+        }
+    </script>
+</body>
+</html>

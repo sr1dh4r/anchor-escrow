@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solana Wallet - Mobile</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
+    <!-- Buffer polyfill - must load before other modules -->
+    <script type="module">
+      import { Buffer } from 'https://esm.sh/buffer@6.0.3';
+      window.Buffer = Buffer;
+      console.log("Buffer polyfill loaded successfully");
+    </script>
+    <script type="module">
+      import * as splToken from "https://esm.sh/@solana/spl-token";
+      window.splToken = splToken;
+      console.log("SPL Token loaded:", splToken);
+    </script>
+    <script src="wallet-api.js"></script>
+    <style>
+        .half-sheet {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            border-radius: 20px 20px 0 0;
+            transform: translateY(100%);
+            transition: transform 0.3s ease-out;
+            z-index: 50;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .half-sheet.show {
+            transform: translateY(0);
+        }
+        .dark .half-sheet {
+            background: #18181b;
+        }
+        .backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 40;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease-out;
+        }
+        .backdrop.show {
+            opacity: 1;
+            visibility: visible;
+        }
+    </style>
+</head>
+<body class="absolute inset-0 bg-white dark:bg-black text-black dark:text-white p-1 flex flex-col gap-1 overflow-scroll antialiased h-full leading-[1.3]">
+    <!-- Header -->
+    <div id="mainHeader" class="flex items-center justify-between p-4 bg-zinc-900 rounded-lg">
+        <div class="flex-1">
+            <div class="text-sm font-medium" id="walletNameHeader">No Wallet Connected</div>
+            <div class="text-xs text-gray-400 font-mono" id="walletAddressHeader">Connect to view address</div>
+        </div>
+        <div class="flex items-center gap-2">
+            <button id="copyAddressBtn" class="p-2 bg-zinc-800 rounded-lg" disabled>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                </svg>
+            </button>
+            <button id="walletMenuBtn" class="p-2 bg-zinc-800 rounded-lg">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div id="mainContent" class="hidden flex-1 flex flex-col gap-1">
+        <!-- Total Balance Card -->
+        <div class="bg-zinc-900 rounded-lg p-4">
+            <div class="text-sm text-gray-400 mb-2">Total Balance</div>
+            <div class="text-2xl font-bold" id="totalBalance">$0.00</div>
+            <div class="flex gap-2 mt-4">
+                <button id="sendBtn" class="flex-1 bg-blue-600 text-white py-3 rounded-lg font-medium">
+                    Send
+                </button>
+                <button id="receiveBtn" class="flex-1 bg-green-600 text-white py-3 rounded-lg font-medium">
+                    Receive
+                </button>
+            </div>
+        </div>
+
+        <!-- Token Balances -->
+        <div class="rounded-lg flex-1">
+            <div class="text-sm font-medium p-4">Token Balances</div>
+            <div id="tokenList" class="space-y-1">
+                <!-- Tokens will be populated here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Transactions Page -->
+    <div id="transactionsPage" class="hidden flex-1 flex flex-col gap-1">
+        <!-- Transactions Header -->
+        <div class="flex items-center justify-between p-4 bg-zinc-900 rounded-lg">
+            <div class="flex items-center gap-3">
+                <button id="backToHomeBtn" class="p-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                    </svg>
+                </button>
+                <h2 class="text-lg font-semibold">Transactions</h2>
+            </div>
+        </div>
+        
+        <!-- Transactions Content -->
+        <div class="bg-zinc-900 rounded-lg p-4 flex-1">
+            <div id="transactionsList" class="space-y-3">
+                <div class="text-center text-gray-400 py-8">
+                    <div class="text-sm">No transactions yet</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Empty State -->
+    <div id="emptyState" class="flex-1 flex items-center justify-center">
+        <div class="text-center">
+            <div class="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                </svg>
+            </div>
+            <div class="text-lg font-medium mb-2">No Wallet Connected</div>
+            <div class="text-sm text-gray-400 mb-4">Connect a wallet to view your balances and send tokens</div>
+            <button id="connectWalletBtn" class="bg-zinc-800 text-white px-6 py-3 rounded-lg font-medium">
+                Connect Wallet
+            </button>
+        </div>
+    </div>
+
+    <!-- Footer Navigation -->
+    <div class="flex items-center justify-center gap-8 p-4 bg-zinc-900 rounded-lg">
+        <button id="homeBtn" class="flex items-center justify-center w-12 h-12 rounded-lg text-white">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
+            </svg>
+        </button>
+        <button id="transactionsBtn" class="flex items-center justify-center w-12 h-12 rounded-lg text-white">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+            </svg>
+        </button>
+    </div>
+
+    <!-- Transaction Result Half Sheet -->
+    <div id="transactionResultSheet" class="half-sheet">
+        <div class="p-4">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-lg font-semibold" id="transactionResultTitle">Transaction Result</h3>
+                <button id="closeTransactionResultSheet" class="p-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            <div id="transactionResultContent" class="space-y-4">
+                <!-- Content will be populated dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Backdrop -->
+    <div id="backdrop" class="backdrop"></div>
+
+    <!-- Connect Wallet Half Sheet -->
+    <div id="connectWalletSheet" class="half-sheet">
+        <div class="p-4">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-lg font-semibold">Connect Wallet</h3>
+                <button id="closeConnectSheet" class="p-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="space-y-3">
+                <button id="createWalletBtn" class="w-full bg-green-600 text-white py-4 rounded-lg font-medium">
+                    Create New Wallet
+                </button>
+                <button id="importWalletBtn" class="w-full bg-zinc-800 text-white py-4 rounded-lg font-medium">
+                    Import Wallet
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Wallet Menu Half Sheet -->
+    <div id="walletMenuSheet" class="half-sheet">
+        <div class="p-4">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-lg font-semibold">Wallet Options</h3>
+                <button id="closeWalletMenuSheet" class="p-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="space-y-3">
+                <button id="switchWalletBtn" class="w-full bg-zinc-800 text-white py-4 rounded-lg font-medium">
+                    Switch Wallet
+                </button>
+                <button id="exportWalletBtn" class="w-full bg-zinc-800 text-white py-4 rounded-lg font-medium">
+                    Export Wallet
+                </button>
+                <button id="disconnectWalletBtn" class="w-full bg-red-600 text-white py-4 rounded-lg font-medium">
+                    Disconnect Wallet
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Send Token Half Sheet -->
+    <div id="sendTokenSheet" class="half-sheet">
+        <div class="p-4">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-lg font-semibold">Send Tokens</h3>
+                <button id="closeSendSheet" class="p-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium mb-2">Recipient Address</label>
+                    <input type="text" id="recipientAddress" placeholder="Enter recipient address" 
+                           class="w-full px-4 py-3 border border-gray-300 rounded-lg bg-zinc-800 text-white">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2">Amount</label>
+                    <input type="number" id="sendAmount" placeholder="0.00" step="0.000001"
+                           class="w-full px-4 py-3 border border-gray-300 rounded-lg bg-zinc-800 text-white">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2">Token</label>
+                    <select id="sendToken" class="w-full px-4 py-3 border border-gray-300 rounded-lg bg-zinc-800 text-white">
+                        <option value="SOL">SOL</option>
+                        <option value="USDT">USDT</option>
+                    </select>
+                </div>
+                <button id="confirmSendBtn" class="w-full bg-zinc-800 text-white py-4 rounded-lg font-medium">
+                    Send Tokens
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Receive Token Half Sheet -->
+    <div id="receiveTokenSheet" class="half-sheet">
+        <div class="p-4">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-lg font-semibold">Receive Tokens</h3>
+                <button id="closeReceiveSheet" class="p-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="text-center space-y-4">
+                <div class="w-48 h-48 bg-zinc-800 rounded-lg mx-auto flex items-center justify-center">
+                    <div class="text-center">
+                        <div class="text-sm font-mono break-all" id="receiveAddress">Connect wallet to view address</div>
+                    </div>
+                </div>
+                <button id="copyReceiveAddressBtn" class="w-full bg-zinc-800 text-white py-4 rounded-lg font-medium">
+                    Copy Address
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Wallet Half Sheet -->
+    <div id="createWalletSheet" class="half-sheet">
+        <div class="p-4">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-lg font-semibold">Create Wallet</h3>
+                <button id="closeCreateSheet" class="p-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium mb-2">Wallet Name</label>
+                    <input type="text" id="createWalletName" placeholder="Enter wallet name (optional)" 
+                           class="w-full px-4 py-3 border border-gray-300 rounded-lg bg-zinc-800 text-white">
+                </div>
+                <button id="generateWalletBtn" class="w-full bg-green-600 text-white py-4 rounded-lg font-medium">
+                    Generate New Wallet
+                </button>
+                
+                <div id="walletDetails" class="hidden space-y-4">
+                    <div class="bg-yellow-900 border border-yellow-600 rounded-lg p-4">
+                        <div class="text-sm font-medium text-yellow-200 mb-2">Important</div>
+                        <div class="text-xs text-yellow-300">Save your private key and mnemonic securely. You'll need them to recover your wallet.</div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Private Key</label>
+                        <div class="flex items-center space-x-2">
+                            <input type="password" id="newPrivateKey" readonly 
+                                   class="flex-1 px-4 py-3 border border-gray-300 rounded-lg bg-zinc-800 text-white text-xs font-mono">
+                            <button id="togglePrivateKeyBtn" class="bg-zinc-700 text-white px-3 py-3 rounded-lg">
+                                Show
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Mnemonic Phrase</label>
+                        <textarea id="newMnemonic" readonly rows="3"
+                                  class="w-full px-4 py-3 border border-gray-300 rounded-lg bg-zinc-800 text-white text-xs"></textarea>
+                    </div>
+                    
+                    <button id="confirmCreateBtn" class="w-full bg-zinc-800 text-white py-4 rounded-lg font-medium">
+                        Confirm & Load Wallet
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Wallet Half Sheet -->
+    <div id="importWalletSheet" class="half-sheet">
+        <div class="p-4">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-lg font-semibold">Import Wallet</h3>
+                <button id="closeImportSheet" class="p-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="space-y-4">
+                <div class="flex space-x-2">
+                    <button id="importPrivateKeyTab" class="flex-1 py-2 px-4 bg-zinc-800 text-white rounded-lg text-sm">
+                        Private Key
+                    </button>
+                    <button id="importFileTab" class="flex-1 py-2 px-4 bg-zinc-800 text-white rounded-lg text-sm">
+                        File
+                    </button>
+                    <button id="importMnemonicTab" class="flex-1 py-2 px-4 bg-zinc-800 text-white rounded-lg text-sm">
+                        Mnemonic
+                    </button>
+                </div>
+                
+                <!-- Private Key Import -->
+                <div id="privateKeyImport" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Wallet Name</label>
+                        <input type="text" id="importWalletName" placeholder="Enter wallet name (optional)" 
+                               class="w-full px-4 py-3 border border-gray-300 rounded-lg bg-zinc-800 text-white">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Private Key</label>
+                        <textarea id="importPrivateKey" rows="3" placeholder="Enter your private key"
+                                  class="w-full px-4 py-3 border border-gray-300 rounded-lg bg-zinc-800 text-white text-xs font-mono"></textarea>
+                    </div>
+                </div>
+                
+                <!-- File Import -->
+                <div id="fileImport" class="space-y-4 hidden">
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Wallet Name</label>
+                        <input type="text" id="importFileWalletName" placeholder="Enter wallet name (optional)" 
+                               class="w-full px-4 py-3 border border-gray-300 rounded-lg bg-zinc-800 text-white">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Keypair File</label>
+                        <div class="border-2 border-dashed border-gray-400 rounded-lg p-6 text-center">
+                            <input type="file" id="keypairFile" accept=".json,.txt" class="hidden">
+                            <div id="fileDropZone" class="cursor-pointer">
+                                <svg class="w-8 h-8 mx-auto mb-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                                </svg>
+                                <p class="text-sm text-gray-400">Tap to select file</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Mnemonic Import -->
+                <div id="mnemonicImport" class="space-y-4 hidden">
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Wallet Name</label>
+                        <input type="text" id="importMnemonicWalletName" placeholder="Enter wallet name (optional)" 
+                               class="w-full px-4 py-3 border border-gray-300 rounded-lg bg-zinc-800 text-white">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Mnemonic Phrase</label>
+                        <textarea id="importMnemonic" rows="3" placeholder="Enter your mnemonic phrase"
+                                  class="w-full px-4 py-3 border border-gray-300 rounded-lg bg-zinc-800 text-white"></textarea>
+                    </div>
+                </div>
+                
+                <button id="confirmImportBtn" class="w-full bg-zinc-800 text-white py-4 rounded-lg font-medium">
+                    Import Wallet
+                </button>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        // Global variables
+        let walletAPI;
+        let isConnected = false;
+        let currentImportType = 'privateKey';
+
+        // Initialize wallet API
+        function initializeWalletAPI() {
+            const connection = new solanaWeb3.Connection('https://api.devnet.solana.com');
+            walletAPI = new WalletAPI(connection, 'devnet');
+        }
+
+        // Show/hide half sheet
+        function showHalfSheet(sheetId) {
+            document.getElementById('backdrop').classList.add('show');
+            document.getElementById(sheetId).classList.add('show');
+        }
+
+        function hideHalfSheet(sheetId) {
+            document.getElementById('backdrop').classList.remove('show');
+            document.getElementById(sheetId).classList.remove('show');
+        }
+
+        // Hide all half sheets
+        function hideAllSheets() {
+            const sheets = ['connectWalletSheet', 'walletMenuSheet', 'sendTokenSheet', 'receiveTokenSheet', 
+                          'createWalletSheet', 'importWalletSheet', 'transactionResultSheet'];
+            sheets.forEach(sheet => hideHalfSheet(sheet));
+        }
+
+        // Update UI based on connection status
+        function updateUI() {
+            if (isConnected) {
+                document.getElementById('mainContent').classList.remove('hidden');
+                document.getElementById('emptyState').classList.add('hidden');
+                document.getElementById('transactionsPage').classList.add('hidden');
+                loadWalletData();
+            } else {
+                document.getElementById('mainContent').classList.add('hidden');
+                document.getElementById('emptyState').classList.remove('hidden');
+                document.getElementById('transactionsPage').classList.add('hidden');
+                showHalfSheet('connectWalletSheet');
+            }
+        }
+
+        // Navigation functions
+        function showHomePage() {
+            document.getElementById('mainHeader').classList.remove('hidden');
+            document.getElementById('mainContent').classList.remove('hidden');
+            document.getElementById('transactionsPage').classList.add('hidden');
+            updateNavButtons('home');
+        }
+
+        function showTransactionsPage() {
+            document.getElementById('mainHeader').classList.add('hidden');
+            document.getElementById('mainContent').classList.add('hidden');
+            document.getElementById('transactionsPage').classList.remove('hidden');
+            updateNavButtons('transactions');
+        }
+
+        function updateNavButtons(activePage) {
+            // Reset all buttons
+            document.getElementById('homeBtn').className = 'flex items-center justify-center w-12 h-12 rounded-lg text-white';
+            document.getElementById('transactionsBtn').className = 'flex items-center justify-center w-12 h-12 rounded-lg text-white';
+
+            // Highlight active button
+            if (activePage === 'home') {
+                document.getElementById('homeBtn').className = 'flex items-center justify-center w-12 h-12 rounded-lg bg-zinc-800 text-white';
+            } else if (activePage === 'transactions') {
+                document.getElementById('transactionsBtn').className = 'flex items-center justify-center w-12 h-12 rounded-lg bg-zinc-800 text-white';
+            }
+        }
+
+        // Load wallet data
+        async function loadWalletData() {
+            try {
+                const solBalance = await walletAPI.getSolBalance();
+                const usdtBalance = await walletAPI.getTokenBalance('USDT');
+                const walletName = walletAPI.getWalletName();
+                const address = walletAPI.wallet.publicKey.toString();
+
+                // Update header
+                document.getElementById('walletNameHeader').textContent = walletName;
+                document.getElementById('walletAddressHeader').textContent = address.slice(0, 8) + '...' + address.slice(-8);
+                document.getElementById('copyAddressBtn').disabled = false;
+
+                // Update total balance (simplified - just SOL for now)
+                document.getElementById('totalBalance').textContent = `$${solBalance.formattedBalance}`;
+
+                // Update token list
+                const tokenList = document.getElementById('tokenList');
+                tokenList.innerHTML = `
+                    <div class="flex items-center justify-between p-4 bg-zinc-900 rounded-lg">
+                        <div class="flex items-center gap-3">
+                            <div>
+                                <div class="font-medium">SOL</div>
+                                <div class="text-xs text-gray-400">Solana</div>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <div class="font-medium">${solBalance.formattedBalance}</div>
+                            <div class="text-xs text-gray-400">SOL</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between p-4 bg-zinc-900 rounded-lg">
+                        <div class="flex items-center gap-3">
+                            <div>
+                                <div class="font-medium">USDT</div>
+                                <div class="text-xs text-gray-400">Tether USD</div>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <div class="font-medium">${usdtBalance.formattedBalance}</div>
+                            <div class="text-xs text-gray-400">USDT</div>
+                        </div>
+                    </div>
+                `;
+
+                // Update receive address
+                document.getElementById('receiveAddress').textContent = address;
+
+            } catch (error) {
+                console.error('Failed to load wallet data:', error);
+            }
+        }
+
+        // Event listeners
+        function setupEventListeners() {
+            // Connect wallet
+            document.getElementById('connectWalletBtn').addEventListener('click', () => showHalfSheet('connectWalletSheet'));
+            
+            // Wallet menu
+            document.getElementById('walletMenuBtn').addEventListener('click', () => showHalfSheet('walletMenuSheet'));
+            
+            // Send/Receive
+            document.getElementById('sendBtn').addEventListener('click', () => showHalfSheet('sendTokenSheet'));
+            document.getElementById('receiveBtn').addEventListener('click', () => showHalfSheet('receiveTokenSheet'));
+            
+            // Navigation
+            document.getElementById('homeBtn').addEventListener('click', showHomePage);
+            document.getElementById('transactionsBtn').addEventListener('click', showTransactionsPage);
+            document.getElementById('backToHomeBtn').addEventListener('click', showHomePage);
+            
+            // Close buttons
+            document.getElementById('closeConnectSheet').addEventListener('click', () => hideHalfSheet('connectWalletSheet'));
+            document.getElementById('closeWalletMenuSheet').addEventListener('click', () => hideHalfSheet('walletMenuSheet'));
+            document.getElementById('closeSendSheet').addEventListener('click', () => hideHalfSheet('sendTokenSheet'));
+            document.getElementById('closeReceiveSheet').addEventListener('click', () => hideHalfSheet('receiveTokenSheet'));
+            document.getElementById('closeCreateSheet').addEventListener('click', () => hideHalfSheet('createWalletSheet'));
+            document.getElementById('closeImportSheet').addEventListener('click', () => hideHalfSheet('importWalletSheet'));
+            document.getElementById('closeTransactionResultSheet').addEventListener('click', () => hideHalfSheet('transactionResultSheet'));
+            
+            // Backdrop click
+            document.getElementById('backdrop').addEventListener('click', hideAllSheets);
+            
+            // Create wallet
+            document.getElementById('createWalletBtn').addEventListener('click', () => {
+                hideHalfSheet('connectWalletSheet');
+                showHalfSheet('createWalletSheet');
+            });
+            
+            // Import wallet
+            document.getElementById('importWalletBtn').addEventListener('click', () => {
+                hideHalfSheet('connectWalletSheet');
+                showHalfSheet('importWalletSheet');
+            });
+            
+            // Generate wallet
+            document.getElementById('generateWalletBtn').addEventListener('click', generateNewWallet);
+            document.getElementById('confirmCreateBtn').addEventListener('click', confirmCreateWallet);
+            
+            // Import wallet
+            document.getElementById('confirmImportBtn').addEventListener('click', confirmImportWallet);
+            
+            // Import type switching
+            document.getElementById('importPrivateKeyTab').addEventListener('click', () => switchImportType('privateKey'));
+            document.getElementById('importFileTab').addEventListener('click', () => switchImportType('file'));
+            document.getElementById('importMnemonicTab').addEventListener('click', () => switchImportType('mnemonic'));
+            
+            // File handling
+            document.getElementById('keypairFile').addEventListener('change', handleFileSelect);
+            document.getElementById('fileDropZone').addEventListener('click', () => document.getElementById('keypairFile').click());
+            
+            // Copy buttons
+            document.getElementById('copyAddressBtn').addEventListener('click', () => copyToClipboard(walletAPI.wallet.publicKey.toString()));
+            document.getElementById('copyReceiveAddressBtn').addEventListener('click', () => copyToClipboard(walletAPI.wallet.publicKey.toString()));
+            
+            // Wallet actions
+            document.getElementById('switchWalletBtn').addEventListener('click', () => {
+                hideHalfSheet('walletMenuSheet');
+                showHalfSheet('connectWalletSheet');
+            });
+            
+            document.getElementById('disconnectWalletBtn').addEventListener('click', disconnectWallet);
+            
+            // Send tokens
+            document.getElementById('confirmSendBtn').addEventListener('click', sendTokens);
+            
+            // Toggle private key visibility
+            document.getElementById('togglePrivateKeyBtn').addEventListener('click', togglePrivateKeyVisibility);
+        }
+
+        // Generate new wallet
+        async function generateNewWallet() {
+            try {
+                const walletName = document.getElementById('createWalletName').value.trim();
+                const result = await walletAPI.createWallet(walletName);
+                
+                document.getElementById('newPrivateKey').value = walletAPI.getPrivateKey();
+                document.getElementById('newMnemonic').value = result.mnemonic;
+                document.getElementById('walletDetails').classList.remove('hidden');
+                
+            } catch (error) {
+                console.error('Failed to generate wallet:', error);
+                alert('Failed to generate wallet: ' + error.message);
+            }
+        }
+
+        // Confirm create wallet
+        async function confirmCreateWallet() {
+            try {
+                isConnected = true;
+                updateUI();
+                hideHalfSheet('createWalletSheet');
+                alert('Wallet created and loaded successfully!');
+            } catch (error) {
+                console.error('Failed to confirm wallet creation:', error);
+                alert('Failed to confirm wallet creation: ' + error.message);
+            }
+        }
+
+        // Confirm import wallet
+        async function confirmImportWallet() {
+            try {
+                let result;
+                let walletName = '';
+                
+                if (currentImportType === 'privateKey') {
+                    const privateKey = document.getElementById('importPrivateKey').value.trim();
+                    if (!privateKey) {
+                        throw new Error('Please enter a private key');
+                    }
+                    walletName = document.getElementById('importWalletName').value.trim();
+                    result = await walletAPI.importWalletFromPrivateKey(privateKey, walletName);
+                } else if (currentImportType === 'file') {
+                    const file = document.getElementById('keypairFile').files[0];
+                    if (!file) {
+                        throw new Error('Please select a keypair file');
+                    }
+                    walletName = document.getElementById('importFileWalletName').value.trim();
+                    result = await walletAPI.importWalletFromFile(file, walletName);
+                } else {
+                    const mnemonic = document.getElementById('importMnemonic').value.trim();
+                    if (!mnemonic) {
+                        throw new Error('Please enter a mnemonic phrase');
+                    }
+                    walletName = document.getElementById('importMnemonicWalletName').value.trim();
+                    result = await walletAPI.importWalletFromMnemonic(mnemonic, walletName);
+                }
+                
+                isConnected = true;
+                updateUI();
+                hideHalfSheet('importWalletSheet');
+                alert('Wallet imported successfully!');
+                
+            } catch (error) {
+                console.error('Failed to import wallet:', error);
+                alert('Failed to import wallet: ' + error.message);
+            }
+        }
+
+        // Switch import type
+        function switchImportType(type) {
+            currentImportType = type;
+            
+            // Reset tabs
+            document.getElementById('importPrivateKeyTab').className = 'flex-1 py-2 px-4 bg-zinc-800 text-white rounded-lg text-sm';
+            document.getElementById('importFileTab').className = 'flex-1 py-2 px-4 bg-zinc-800 text-white rounded-lg text-sm';
+            document.getElementById('importMnemonicTab').className = 'flex-1 py-2 px-4 bg-zinc-800 text-white rounded-lg text-sm';
+            
+            // Hide all sections
+            document.getElementById('privateKeyImport').classList.add('hidden');
+            document.getElementById('fileImport').classList.add('hidden');
+            document.getElementById('mnemonicImport').classList.add('hidden');
+            
+            // Show selected section
+            if (type === 'privateKey') {
+                document.getElementById('importPrivateKeyTab').className = 'flex-1 py-2 px-4 bg-zinc-800 text-white rounded-lg text-sm';
+                document.getElementById('privateKeyImport').classList.remove('hidden');
+            } else if (type === 'file') {
+                document.getElementById('importFileTab').className = 'flex-1 py-2 px-4 bg-zinc-800 text-white rounded-lg text-sm';
+                document.getElementById('fileImport').classList.remove('hidden');
+            } else {
+                document.getElementById('importMnemonicTab').className = 'flex-1 py-2 px-4 bg-zinc-800 text-white rounded-lg text-sm';
+                document.getElementById('mnemonicImport').classList.remove('hidden');
+            }
+        }
+
+        // Handle file select
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                // File selected, ready for import
+            }
+        }
+
+        // Disconnect wallet
+        async function disconnectWallet() {
+            if (!confirm('Are you sure you want to disconnect your wallet?')) {
+                return;
+            }
+            
+            await walletAPI.disconnectWallet();
+            isConnected = false;
+            updateUI();
+            hideHalfSheet('walletMenuSheet');
+        }
+
+        // Send tokens
+        async function sendTokens() {
+            try {
+                const recipient = document.getElementById('recipientAddress').value.trim();
+                const amount = parseFloat(document.getElementById('sendAmount').value);
+                const token = document.getElementById('sendToken').value;
+                
+                if (!recipient || !amount) {
+                    alert('Please fill in all fields');
+                    return;
+                }
+                
+                // Validate recipient address
+                try {
+                    new solanaWeb3.PublicKey(recipient);
+                } catch (error) {
+                    alert('Invalid recipient address');
+                    return;
+                }
+                
+                // Show loading state
+                const sendBtn = document.getElementById('confirmSendBtn');
+                const originalText = sendBtn.textContent;
+                sendBtn.textContent = 'Sending...';
+                sendBtn.disabled = true;
+                
+                let result;
+                if (token === 'SOL') {
+                    result = await walletAPI.sendSol(recipient, amount.toString());
+                } else {
+                    result = await walletAPI.sendTokens(token, recipient, amount.toString());
+                }
+                
+                // Hide send sheet and show result
+                hideHalfSheet('sendTokenSheet');
+                showTransactionResult(result);
+                
+                // Refresh balances
+                await loadWalletData();
+                
+            } catch (error) {
+                console.error('Failed to send tokens:', error);
+                
+                // Show error result
+                const errorResult = {
+                    success: false,
+                    error: error.message,
+                    tokenSymbol: document.getElementById('sendToken').value,
+                    amount: document.getElementById('sendAmount').value,
+                    recipient: document.getElementById('recipientAddress').value
+                };
+                
+                hideHalfSheet('sendTokenSheet');
+                showTransactionResult(errorResult);
+                
+            } finally {
+                // Reset button state
+                const sendBtn = document.getElementById('confirmSendBtn');
+                sendBtn.textContent = 'Send Tokens';
+                sendBtn.disabled = false;
+            }
+        }
+
+        // Show transaction result
+        function showTransactionResult(result) {
+            const title = document.getElementById('transactionResultTitle');
+            const content = document.getElementById('transactionResultContent');
+            
+            if (result.success) {
+                title.textContent = 'Transaction Successful';
+                title.className = 'text-lg font-semibold text-green-600';
+                
+                content.innerHTML = `
+                    <div class="text-center space-y-4">
+                        <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                            <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <div class="text-lg font-medium">${result.amount} ${result.tokenSymbol} sent successfully!</div>
+                            <div class="text-sm text-gray-400">To: ${result.recipient}</div>
+                        </div>
+                        <div class="space-y-2">
+                            <div class="text-xs text-gray-400">Transaction ID:</div>
+                            <div class="font-mono text-sm bg-zinc-800 p-2 rounded break-all">${result.signature}</div>
+                            <button onclick="copyToClipboard('${result.signature}')" class="w-full bg-zinc-800 text-white py-2 rounded-lg text-sm">
+                                Copy Transaction ID
+                            </button>
+                        </div>
+                        <div>
+                            <a href="${result.explorerUrl}" target="_blank" class="w-full bg-blue-600 text-white py-3 rounded-lg font-medium block text-center">
+                                View on Solscan
+                            </a>
+                        </div>
+                    </div>
+                `;
+            } else {
+                title.textContent = 'Transaction Failed';
+                title.className = 'text-lg font-semibold text-red-600';
+                
+                content.innerHTML = `
+                    <div class="text-center space-y-4">
+                        <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto">
+                            <svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <div class="text-lg font-medium text-red-600">Transaction failed</div>
+                            <div class="text-sm text-gray-400">${result.tokenSymbol} to ${result.recipient}</div>
+                        </div>
+                        <div class="text-sm text-red-400 bg-red-50 p-3 rounded">
+                            ${result.error}
+                        </div>
+                        <button onclick="hideHalfSheet('transactionResultSheet')" class="w-full bg-zinc-800 text-white py-3 rounded-lg font-medium">
+                            Try Again
+                        </button>
+                    </div>
+                `;
+            }
+            
+            showHalfSheet('transactionResultSheet');
+        }
+
+        // Copy to clipboard
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Copied to clipboard!');
+            });
+        }
+
+        // Toggle private key visibility
+        function togglePrivateKeyVisibility() {
+            const input = document.getElementById('newPrivateKey');
+            const button = document.getElementById('togglePrivateKeyBtn');
+            
+            if (input.type === 'password') {
+                input.type = 'text';
+                button.textContent = 'Hide';
+            } else {
+                input.type = 'password';
+                button.textContent = 'Show';
+            }
+        }
+
+        // Check for existing wallet on load
+        async function checkForExistingWallet() {
+            try {
+                const result = await walletAPI.loadWalletFromStorage();
+                if (result) {
+                    isConnected = true;
+                    updateUI();
+                } else {
+                    updateUI();
+                }
+            } catch (error) {
+                console.error('Failed to load existing wallet:', error);
+                updateUI();
+            }
+        }
+
+        // Initialize app
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeWalletAPI();
+            setupEventListeners();
+            checkForExistingWallet();
+        });
+    </script>
+</body>
+</html>

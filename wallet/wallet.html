@@ -1,0 +1,1156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solana Wallet - USDT & More</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
+    <!-- Buffer polyfill - must load before other modules -->
+    <script type="module">
+      import { Buffer } from 'https://esm.sh/buffer@6.0.3';
+      window.Buffer = Buffer;
+      console.log("Buffer polyfill loaded successfully");
+    </script>
+    <script type="module">
+      import * as anchor from "https://esm.sh/@coral-xyz/anchor";
+      window.anchor = anchor;
+      console.log("Anchor loaded:", anchor);
+    </script>
+    <script type="module">
+      import * as splToken from "https://esm.sh/@solana/spl-token";
+      window.splToken = splToken;
+      console.log("SPL Token loaded:", splToken);
+    </script>
+    <script src="wallet-api.js"></script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .card-hover {
+            transition: all 0.3s ease;
+        }
+        .card-hover:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        .balance-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .token-card {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        .sol-card {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="min-h-screen">
+        <!-- Header -->
+        <header class="gradient-bg text-white shadow-lg">
+            <div class="container mx-auto px-4 py-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
+                            <span class="text-2xl">👛</span>
+                        </div>
+                        <div>
+                            <h1 class="text-2xl font-bold">Solana Wallet</h1>
+                            <p class="text-sm opacity-90">USDT & More</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <div id="walletStatus" class="text-sm">
+                            <span class="px-3 py-1 bg-white bg-opacity-20 rounded-full">No Wallet</span>
+                        </div>
+                        <div id="walletActions" class="hidden">
+                            <button id="createWalletBtn" class="bg-white text-purple-600 px-6 py-2 rounded-full font-semibold hover:bg-opacity-90 transition duration-200">
+                                Create Wallet
+                            </button>
+                            <button id="importWalletBtn" class="bg-white bg-opacity-20 text-white px-6 py-2 rounded-full font-semibold hover:bg-opacity-30 transition duration-200">
+                                Import Wallet
+                            </button>
+                        </div>
+                        <div id="connectedActions" class="hidden flex items-center space-x-3">
+                            <button id="switchWalletBtn" class="bg-blue-500 text-white px-6 py-2 rounded-full font-semibold hover:bg-blue-600 transition duration-200">
+                                Switch Wallet
+                            </button>
+                            <button id="disconnectBtn" class="bg-red-500 text-white px-6 py-2 rounded-full font-semibold hover:bg-red-600 transition duration-200">
+                                Disconnect
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Alerts Container -->
+        <div id="alerts" class="container mx-auto px-4 py-4"></div>
+
+        <!-- Main Content -->
+        <main class="container mx-auto px-4 py-8">
+            <!-- Wallet Overview (shown when connected) -->
+            <div id="walletOverview" class="hidden">
+                <!-- Balance Cards -->
+                <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                    <!-- SOL Balance Card -->
+                    <div class="sol-card rounded-xl p-6 text-white card-hover">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center space-x-3">
+                                <span class="text-3xl">☀️</span>
+                                <div>
+                                    <h3 class="text-lg font-semibold">SOL</h3>
+                                    <p class="text-sm opacity-90">Solana</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="text-3xl font-bold mb-2" id="solBalance">0.000000000</div>
+                        <div class="text-sm opacity-90">Available Balance</div>
+                    </div>
+
+                    <!-- USDT Balance Card -->
+                    <div class="token-card rounded-xl p-6 text-white card-hover">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center space-x-3">
+                                <span class="text-3xl">💵</span>
+                                <div>
+                                    <h3 class="text-lg font-semibold">USDT</h3>
+                                    <p class="text-sm opacity-90">Tether USD</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="text-3xl font-bold mb-2" id="usdtBalance">0.000000</div>
+                        <div class="text-sm opacity-90">Available Balance</div>
+                    </div>
+
+                    <!-- Portfolio Value Card -->
+                    <div class="balance-card rounded-xl p-6 text-white card-hover">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center space-x-3">
+                                <span class="text-3xl">📊</span>
+                                <div>
+                                    <h3 class="text-lg font-semibold">Portfolio</h3>
+                                    <p class="text-sm opacity-90">Total Value</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="text-3xl font-bold mb-2" id="portfolioValue">$0.00</div>
+                        <div class="text-sm opacity-90">USD Equivalent</div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="grid md:grid-cols-2 gap-6 mb-8">
+                    <!-- Send Tokens Card -->
+                    <div class="bg-white rounded-xl shadow-lg p-6 card-hover">
+                        <div class="flex items-center mb-4">
+                            <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mr-4">
+                                <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-semibold text-gray-800">Send Tokens</h3>
+                                <p class="text-gray-600">Transfer USDT or SOL</p>
+                            </div>
+                        </div>
+                        <button id="sendBtn" class="w-full bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition duration-200">
+                            Send Tokens
+                        </button>
+                    </div>
+
+                    <!-- Transaction History Card -->
+                    <div class="bg-white rounded-xl shadow-lg p-6 card-hover">
+                        <div class="flex items-center mb-4">
+                            <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mr-4">
+                                <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-semibold text-gray-800">History</h3>
+                                <p class="text-gray-600">View transactions</p>
+                            </div>
+                        </div>
+                        <button id="historyBtn" class="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-200">
+                            View History
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Wallet Address -->
+                <div class="bg-white rounded-xl shadow-lg p-6 mb-8">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-semibold text-gray-800">Wallet Address</h3>
+                        <div class="flex space-x-2">
+                            <button id="exportWalletBtn" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition duration-200 text-sm">
+                                Export Wallet
+                            </button>
+                            <button id="disconnectWalletBtn" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition duration-200 text-sm">
+                                Disconnect Wallet
+                            </button>
+                        </div>
+                    </div>
+                    <div class="space-y-2">
+                        <div class="flex items-center space-x-2">
+                            <span class="text-sm font-medium text-gray-600">Wallet Name:</span>
+                            <span class="text-sm font-semibold text-gray-800" id="walletNameDisplay">-</span>
+                        </div>
+                        <div class="flex items-center space-x-4">
+                            <div class="flex-1 bg-gray-100 rounded-lg p-3 font-mono text-sm" id="walletAddress">
+                                Connect wallet to view address
+                            </div>
+                            <button id="copyAddressBtn" class="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition duration-200" disabled>
+                                Copy
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Transactions -->
+                <div class="bg-white rounded-xl shadow-lg p-6">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Recent Transactions</h3>
+                    <div id="recentTransactions" class="space-y-3">
+                        <div class="text-center text-gray-500 py-8">
+                            <svg class="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                            </svg>
+                            <p>No recent transactions</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Wallet Setup Screen (shown when no wallet) -->
+            <div id="walletSetupScreen" class="text-center py-16">
+                <div class="max-w-2xl mx-auto">
+                    <div class="w-24 h-24 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-8">
+                        <span class="text-4xl">👛</span>
+                    </div>
+                    <h2 class="text-3xl font-bold text-gray-800 mb-4">Welcome to Solana Wallet</h2>
+                    <p class="text-gray-600 mb-8">Create a new wallet or import an existing one to manage USDT and other tokens on Solana</p>
+                    
+                    <div class="grid md:grid-cols-2 gap-6 mb-8">
+                        <div class="bg-white rounded-xl shadow-lg p-6 card-hover">
+                            <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <span class="text-2xl">✨</span>
+                            </div>
+                            <h3 class="text-xl font-semibold text-gray-800 mb-2">Create New Wallet</h3>
+                            <p class="text-gray-600 mb-4">Generate a new wallet with private key and mnemonic phrase</p>
+                            <button id="createWalletScreenBtn" class="w-full bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 transition duration-200">
+                                Create New Wallet
+                            </button>
+                        </div>
+                        
+                        <div class="bg-white rounded-xl shadow-lg p-6 card-hover">
+                            <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <span class="text-2xl">📥</span>
+                            </div>
+                            <h3 class="text-xl font-semibold text-gray-800 mb-2">Import Wallet</h3>
+                            <p class="text-gray-600 mb-4">Import existing wallet using private key or mnemonic phrase</p>
+                            <button id="importWalletScreenBtn" class="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition duration-200">
+                                Import Wallet
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="text-sm text-gray-500">
+                        <p>Secure • Fast • Decentralized • Your Keys, Your Crypto</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Send Tokens Modal -->
+        <div id="sendModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+            <div class="bg-white rounded-xl p-6 w-full max-w-md mx-4">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-xl font-semibold text-gray-800">Send Tokens</h3>
+                    <button id="closeSendModal" class="text-gray-400 hover:text-gray-600">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                
+                <form id="sendForm" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Token</label>
+                        <select id="sendToken" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                            <option value="SOL">SOL (Solana)</option>
+                            <option value="USDT">USDT (Tether USD)</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Recipient Address</label>
+                        <input type="text" id="sendRecipient" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                               placeholder="Enter Solana wallet address" required>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Amount</label>
+                        <input type="number" id="sendAmount" step="0.000001" min="0.000001"
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                               placeholder="0.00" required>
+                    </div>
+                    
+                    <div class="flex space-x-3">
+                        <button type="button" id="cancelSendBtn" 
+                                class="flex-1 bg-gray-300 text-gray-700 py-3 px-4 rounded-lg hover:bg-gray-400 transition duration-200">
+                            Cancel
+                        </button>
+                        <button type="submit" id="confirmSendBtn" 
+                                class="flex-1 bg-purple-600 text-white py-3 px-4 rounded-lg hover:bg-purple-700 focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 transition duration-200">
+                            Send
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Transaction History Modal -->
+        <div id="historyModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+            <div class="bg-white rounded-xl p-6 w-full max-w-2xl mx-4 max-h-96 overflow-y-auto">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-xl font-semibold text-gray-800">Transaction History</h3>
+                    <button id="closeHistoryModal" class="text-gray-400 hover:text-gray-600">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                
+                <div id="historyContent" class="space-y-3">
+                    <div class="text-center text-gray-500 py-8">
+                        <svg class="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                        </svg>
+                        <p>Loading transactions...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Create Wallet Modal -->
+        <div id="createWalletModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+            <div class="bg-white rounded-xl p-6 w-full max-w-md mx-4">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-xl font-semibold text-gray-800">Create New Wallet</h3>
+                    <button id="closeCreateWalletModal" class="text-gray-400 hover:text-gray-600">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                
+                <div class="space-y-4">
+                    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                        <div class="flex items-start">
+                            <svg class="w-5 h-5 text-yellow-600 mt-0.5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                            </svg>
+                            <div>
+                                <h4 class="text-sm font-medium text-yellow-800">Important</h4>
+                                <p class="text-sm text-yellow-700 mt-1">Save your private key and mnemonic phrase securely. You'll need them to recover your wallet.</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button id="generateWalletBtn" class="w-full bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition duration-200">
+                        Generate New Wallet
+                    </button>
+                    
+                    <div id="walletDetails" class="hidden space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Wallet Name</label>
+                            <input type="text" id="walletName" placeholder="Enter wallet name (optional)" 
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Wallet Address</label>
+                            <div class="flex items-center space-x-2">
+                                <input type="text" id="newWalletAddress" readonly 
+                                       class="flex-1 px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 font-mono text-sm">
+                                <button id="copyAddressBtn" class="bg-gray-600 text-white px-3 py-2 rounded hover:bg-gray-700">
+                                    Copy
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Private Key</label>
+                            <div class="flex items-center space-x-2">
+                                <input type="password" id="newPrivateKey" readonly 
+                                       class="flex-1 px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 font-mono text-sm">
+                                <button id="togglePrivateKeyBtn" class="bg-gray-600 text-white px-3 py-2 rounded hover:bg-gray-700">
+                                    Show
+                                </button>
+                                <button id="copyPrivateKeyBtn" class="bg-gray-600 text-white px-3 py-2 rounded hover:bg-gray-700">
+                                    Copy
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Mnemonic Phrase</label>
+                            <div class="flex items-center space-x-2">
+                                <textarea id="newMnemonic" readonly rows="3"
+                                          class="flex-1 px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 font-mono text-sm"></textarea>
+                                <button id="copyMnemonicBtn" class="bg-gray-600 text-white px-3 py-2 rounded hover:bg-gray-700">
+                                    Copy
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="flex space-x-3">
+                            <button id="exportKeypairBtn" 
+                                    class="bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition duration-200">
+                                Export Keypair File
+                            </button>
+                        </div>
+                        
+                        <div class="flex space-x-3">
+                            <button id="cancelCreateWalletBtn" 
+                                    class="flex-1 bg-gray-300 text-gray-700 py-3 px-4 rounded-lg hover:bg-gray-400 transition duration-200">
+                                Cancel
+                            </button>
+                            <button id="confirmCreateWalletBtn" 
+                                    class="flex-1 bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition duration-200">
+                                Use This Wallet
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Import Wallet Modal -->
+        <div id="importWalletModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+            <div class="bg-white rounded-xl p-6 w-full max-w-md mx-4">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-xl font-semibold text-gray-800">Import Wallet</h3>
+                    <button id="closeImportWalletModal" class="text-gray-400 hover:text-gray-600">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                
+                <div class="space-y-4">
+                    <div class="flex space-x-2 mb-4">
+                        <button id="importPrivateKeyTab" class="flex-1 py-2 px-4 bg-blue-600 text-white rounded-lg">
+                            Private Key
+                        </button>
+                        <button id="importFileTab" class="flex-1 py-2 px-4 bg-gray-300 text-gray-700 rounded-lg">
+                            Keypair File
+                        </button>
+                        <button id="importMnemonicTab" class="flex-1 py-2 px-4 bg-gray-300 text-gray-700 rounded-lg">
+                            Mnemonic
+                        </button>
+                    </div>
+                    
+                    <!-- Private Key Import -->
+                    <div id="privateKeyImport" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Wallet Name</label>
+                            <input type="text" id="importWalletName" placeholder="Enter wallet name (optional)" 
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Private Key</label>
+                            <textarea id="importPrivateKey" rows="3"
+                                      class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                                      placeholder="Enter your private key (base58 format)"></textarea>
+                        </div>
+                    </div>
+                    
+                    <!-- File Import -->
+                    <div id="fileImport" class="space-y-4 hidden">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Wallet Name</label>
+                            <input type="text" id="importFileWalletName" placeholder="Enter wallet name (optional)" 
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Keypair File</label>
+                            <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition duration-200">
+                                <input type="file" id="keypairFile" accept=".json,.txt" class="hidden">
+                                <div id="fileDropZone" class="cursor-pointer">
+                                    <svg class="w-12 h-12 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                                    </svg>
+                                    <p class="text-gray-600 mb-2">Click to select keypair file or drag and drop</p>
+                                    <p class="text-sm text-gray-500">Supports multiple formats:</p>
+                                    <ul class="text-xs text-gray-400 mt-1 space-y-1">
+                                        <li>• JSON files exported from this wallet</li>
+                                        <li>• Raw keypair arrays (Phantom format)</li>
+                                        <li>• Comma/space-separated numbers</li>
+                                    </ul>
+                                </div>
+                                <div id="selectedFileName" class="hidden mt-2 text-sm text-blue-600"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Mnemonic Import -->
+                    <div id="mnemonicImport" class="space-y-4 hidden">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Wallet Name</label>
+                            <input type="text" id="importMnemonicWalletName" placeholder="Enter wallet name (optional)" 
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Mnemonic Phrase</label>
+                            <textarea id="importMnemonic" rows="3"
+                                      class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                      placeholder="Enter your mnemonic phrase (12 words)"></textarea>
+                        </div>
+                    </div>
+                    
+                    <div class="flex space-x-3">
+                        <button id="cancelImportWalletBtn" 
+                                class="flex-1 bg-gray-300 text-gray-700 py-3 px-4 rounded-lg hover:bg-gray-400 transition duration-200">
+                            Cancel
+                        </button>
+                        <button id="confirmImportWalletBtn" 
+                                class="flex-1 bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-200">
+                            Import Wallet
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let walletAPI = null;
+        let isConnected = false;
+        let currentImportType = 'privateKey';
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeWalletAPI();
+            setupEventListeners();
+            checkForExistingWallet();
+        });
+
+        function initializeWalletAPI() {
+            try {
+                const connection = new solanaWeb3.Connection('https://api.devnet.solana.com', 'confirmed');
+                walletAPI = new WalletAPI(connection, 'devnet');
+                console.log('Wallet API initialized');
+            } catch (error) {
+                console.error('Failed to initialize Wallet API:', error);
+                walletAPI.showError('Failed to initialize wallet API. Please refresh the page.');
+            }
+        }
+
+        async function checkForExistingWallet() {
+            try {
+                const existingWallet = await walletAPI.loadWalletFromStorage();
+                if (existingWallet) {
+                    isConnected = true;
+                    updateWalletStatus();
+                    await loadWalletData();
+                }
+            } catch (error) {
+                console.error('Failed to check for existing wallet:', error);
+            }
+        }
+
+        function setupEventListeners() {
+            // Wallet creation/import buttons
+            document.getElementById('createWalletBtn').addEventListener('click', openCreateWalletModal);
+            document.getElementById('importWalletBtn').addEventListener('click', openImportWalletModal);
+            document.getElementById('createWalletScreenBtn').addEventListener('click', openCreateWalletModal);
+            document.getElementById('importWalletScreenBtn').addEventListener('click', openImportWalletModal);
+            
+            // Send tokens
+            document.getElementById('sendBtn').addEventListener('click', openSendModal);
+            document.getElementById('sendForm').addEventListener('submit', handleSendTokens);
+            document.getElementById('cancelSendBtn').addEventListener('click', closeSendModal);
+            document.getElementById('closeSendModal').addEventListener('click', closeSendModal);
+            
+            // Transaction history
+            document.getElementById('historyBtn').addEventListener('click', openHistoryModal);
+            document.getElementById('closeHistoryModal').addEventListener('click', closeHistoryModal);
+            
+            // Copy address
+            document.getElementById('copyAddressBtn').addEventListener('click', copyWalletAddress);
+            
+            // Wallet creation modal
+            document.getElementById('generateWalletBtn').addEventListener('click', generateNewWallet);
+            document.getElementById('confirmCreateWalletBtn').addEventListener('click', confirmCreateWallet);
+            document.getElementById('cancelCreateWalletBtn').addEventListener('click', closeCreateWalletModal);
+            document.getElementById('closeCreateWalletModal').addEventListener('click', closeCreateWalletModal);
+            
+            // Wallet import modal
+            document.getElementById('importPrivateKeyTab').addEventListener('click', () => switchImportType('privateKey'));
+            document.getElementById('importFileTab').addEventListener('click', () => switchImportType('file'));
+            document.getElementById('importMnemonicTab').addEventListener('click', () => switchImportType('mnemonic'));
+            document.getElementById('confirmImportWalletBtn').addEventListener('click', confirmImportWallet);
+            document.getElementById('cancelImportWalletBtn').addEventListener('click', closeImportWalletModal);
+            document.getElementById('closeImportWalletModal').addEventListener('click', closeImportWalletModal);
+            
+            // File handling
+            document.getElementById('keypairFile').addEventListener('change', handleFileSelect);
+            document.getElementById('fileDropZone').addEventListener('click', () => document.getElementById('keypairFile').click());
+            document.getElementById('fileDropZone').addEventListener('dragover', handleDragOver);
+            document.getElementById('fileDropZone').addEventListener('drop', handleFileDrop);
+            
+            // Export functionality
+            document.getElementById('exportKeypairBtn').addEventListener('click', exportKeypairFile);
+            
+            // Copy buttons
+            document.getElementById('copyAddressBtn').addEventListener('click', () => copyToClipboard('newWalletAddress'));
+            document.getElementById('copyPrivateKeyBtn').addEventListener('click', () => copyToClipboard('newPrivateKey'));
+            document.getElementById('copyMnemonicBtn').addEventListener('click', () => copyToClipboard('newMnemonic'));
+            document.getElementById('togglePrivateKeyBtn').addEventListener('click', togglePrivateKeyVisibility);
+            
+            // Disconnect buttons
+            document.getElementById('disconnectBtn').addEventListener('click', disconnectWallet);
+            document.getElementById('disconnectWalletBtn').addEventListener('click', disconnectWallet);
+            document.getElementById('switchWalletBtn').addEventListener('click', switchWallet);
+            document.getElementById('exportWalletBtn').addEventListener('click', exportKeypairFile);
+        }
+
+        function openCreateWalletModal() {
+            document.getElementById('createWalletModal').classList.remove('hidden');
+            document.getElementById('createWalletModal').classList.add('flex');
+            document.getElementById('walletDetails').classList.add('hidden');
+        }
+
+        function closeCreateWalletModal() {
+            document.getElementById('createWalletModal').classList.add('hidden');
+            document.getElementById('createWalletModal').classList.remove('flex');
+            document.getElementById('walletDetails').classList.add('hidden');
+            document.getElementById('walletName').value = '';
+            document.getElementById('newWalletAddress').value = '';
+            document.getElementById('newPrivateKey').value = '';
+            document.getElementById('newMnemonic').value = '';
+        }
+
+        function openImportWalletModal() {
+            document.getElementById('importWalletModal').classList.remove('hidden');
+            document.getElementById('importWalletModal').classList.add('flex');
+            switchImportType('privateKey');
+        }
+
+        function closeImportWalletModal() {
+            document.getElementById('importWalletModal').classList.add('hidden');
+            document.getElementById('importWalletModal').classList.remove('flex');
+            document.getElementById('importPrivateKey').value = '';
+            document.getElementById('importMnemonic').value = '';
+        }
+
+        function switchImportType(type) {
+            currentImportType = type;
+            
+            // Reset all tabs
+            document.getElementById('importPrivateKeyTab').className = 'flex-1 py-2 px-4 bg-gray-300 text-gray-700 rounded-lg';
+            document.getElementById('importFileTab').className = 'flex-1 py-2 px-4 bg-gray-300 text-gray-700 rounded-lg';
+            document.getElementById('importMnemonicTab').className = 'flex-1 py-2 px-4 bg-gray-300 text-gray-700 rounded-lg';
+            
+            // Hide all import sections
+            document.getElementById('privateKeyImport').classList.add('hidden');
+            document.getElementById('fileImport').classList.add('hidden');
+            document.getElementById('mnemonicImport').classList.add('hidden');
+            
+            // Clear all wallet name fields
+            document.getElementById('importWalletName').value = '';
+            document.getElementById('importFileWalletName').value = '';
+            document.getElementById('importMnemonicWalletName').value = '';
+            
+            if (type === 'privateKey') {
+                document.getElementById('importPrivateKeyTab').className = 'flex-1 py-2 px-4 bg-blue-600 text-white rounded-lg';
+                document.getElementById('privateKeyImport').classList.remove('hidden');
+            } else if (type === 'file') {
+                document.getElementById('importFileTab').className = 'flex-1 py-2 px-4 bg-blue-600 text-white rounded-lg';
+                document.getElementById('fileImport').classList.remove('hidden');
+            } else if (type === 'mnemonic') {
+                document.getElementById('importMnemonicTab').className = 'flex-1 py-2 px-4 bg-blue-600 text-white rounded-lg';
+                document.getElementById('mnemonicImport').classList.remove('hidden');
+            }
+        }
+
+        async function generateNewWallet() {
+            try {
+                walletAPI.clearAlerts();
+                const button = document.getElementById('generateWalletBtn');
+                walletAPI.showLoading(button, 'Generating...');
+                
+                // Get wallet name from input
+                const walletName = document.getElementById('walletName').value.trim();
+                const result = await walletAPI.createWallet(walletName);
+                
+                // Display wallet details
+                document.getElementById('newWalletAddress').value = result.publicKey;
+                document.getElementById('newPrivateKey').value = walletAPI.getPrivateKey();
+                document.getElementById('newMnemonic').value = result.mnemonic;
+                
+                document.getElementById('walletDetails').classList.remove('hidden');
+                walletAPI.hideLoading(button, 'Generate New Wallet');
+                
+            } catch (error) {
+                console.error('Failed to generate wallet:', error);
+                walletAPI.showError('Failed to generate wallet: ' + error.message);
+                const button = document.getElementById('generateWalletBtn');
+                walletAPI.hideLoading(button, 'Generate New Wallet');
+            }
+        }
+
+        async function confirmCreateWallet() {
+            try {
+                isConnected = true;
+                updateWalletStatus();
+                await loadWalletData();
+                closeCreateWalletModal();
+                walletAPI.showSuccess('Wallet created and loaded successfully!');
+                
+            } catch (error) {
+                console.error('Failed to confirm wallet creation:', error);
+                walletAPI.showError('Failed to confirm wallet creation: ' + error.message);
+            }
+        }
+
+        async function confirmImportWallet() {
+            try {
+                walletAPI.clearAlerts();
+                const button = document.getElementById('confirmImportWalletBtn');
+                walletAPI.showLoading(button, 'Importing...');
+                
+                let result;
+                let walletName = '';
+                
+                if (currentImportType === 'privateKey') {
+                    const privateKey = document.getElementById('importPrivateKey').value.trim();
+                    if (!privateKey) {
+                        throw new Error('Please enter a private key');
+                    }
+                    walletName = document.getElementById('importWalletName').value.trim();
+                    result = await walletAPI.importWalletFromPrivateKey(privateKey, walletName);
+                } else if (currentImportType === 'file') {
+                    const file = document.getElementById('keypairFile').files[0];
+                    if (!file) {
+                        throw new Error('Please select a keypair file');
+                    }
+                    walletName = document.getElementById('importFileWalletName').value.trim();
+                    result = await walletAPI.importWalletFromFile(file, walletName);
+                } else {
+                    const mnemonic = document.getElementById('importMnemonic').value.trim();
+                    if (!mnemonic) {
+                        throw new Error('Please enter a mnemonic phrase');
+                    }
+                    walletName = document.getElementById('importMnemonicWalletName').value.trim();
+                    result = await walletAPI.importWalletFromMnemonic(mnemonic, walletName);
+                }
+                
+                isConnected = true;
+                updateWalletStatus();
+                await loadWalletData();
+                closeImportWalletModal();
+                
+                walletAPI.hideLoading(button, 'Import Wallet');
+                walletAPI.showSuccess('Wallet imported successfully!');
+                
+            } catch (error) {
+                console.error('Failed to import wallet:', error);
+                walletAPI.showError('Failed to import wallet: ' + error.message);
+                const button = document.getElementById('confirmImportWalletBtn');
+                walletAPI.hideLoading(button, 'Import Wallet');
+            }
+        }
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                displaySelectedFile(file.name);
+            }
+        }
+
+        function handleDragOver(event) {
+            event.preventDefault();
+            event.currentTarget.classList.add('border-blue-400', 'bg-blue-50');
+        }
+
+        function handleFileDrop(event) {
+            event.preventDefault();
+            event.currentTarget.classList.remove('border-blue-400', 'bg-blue-50');
+            
+            const files = event.dataTransfer.files;
+            if (files.length > 0) {
+                const file = files[0];
+                // Accept JSON files and text files (for raw keypair arrays)
+                if (file.type === 'application/json' || file.name.endsWith('.json') || 
+                    file.type === 'text/plain' || file.name.endsWith('.txt')) {
+                    document.getElementById('keypairFile').files = files;
+                    displaySelectedFile(file.name);
+                } else {
+                    walletAPI.showError('Please select a valid keypair file (JSON or TXT)');
+                }
+            }
+        }
+
+        function displaySelectedFile(fileName) {
+            const fileNameDiv = document.getElementById('selectedFileName');
+            fileNameDiv.textContent = `Selected: ${fileName}`;
+            fileNameDiv.classList.remove('hidden');
+        }
+
+        function exportKeypairFile() {
+            try {
+                if (!walletAPI.keypair) {
+                    throw new Error('No wallet loaded to export');
+                }
+                
+                const keypairData = {
+                    publicKey: walletAPI.keypair.publicKey.toString(),
+                    privateKey: Array.from(walletAPI.keypair.secretKey),
+                    mnemonic: walletAPI.mnemonic,
+                    network: walletAPI.network,
+                    exportedAt: new Date().toISOString(),
+                    version: '1.0'
+                };
+                
+                const blob = new Blob([JSON.stringify(keypairData, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `solana-wallet-${walletAPI.keypair.publicKey.toString().slice(0, 8)}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                walletAPI.showSuccess('Keypair file exported successfully!');
+                
+            } catch (error) {
+                console.error('Failed to export keypair:', error);
+                walletAPI.showError('Failed to export keypair: ' + error.message);
+            }
+        }
+
+        function updateWalletStatus() {
+            if (isConnected) {
+                document.getElementById('walletStatus').innerHTML = `
+                    <span class="px-3 py-1 bg-green-500 text-white rounded-full">Connected</span>
+                `;
+                document.getElementById('walletOverview').classList.remove('hidden');
+                document.getElementById('walletSetupScreen').classList.add('hidden');
+                document.getElementById('walletActions').classList.add('hidden');
+                document.getElementById('connectedActions').classList.remove('hidden');
+            } else {
+                document.getElementById('walletStatus').innerHTML = `
+                    <span class="px-3 py-1 bg-white bg-opacity-20 rounded-full">No Wallet</span>
+                `;
+                document.getElementById('walletOverview').classList.add('hidden');
+                document.getElementById('walletSetupScreen').classList.remove('hidden');
+                document.getElementById('walletActions').classList.remove('hidden');
+                document.getElementById('connectedActions').classList.add('hidden');
+            }
+        }
+
+        async function disconnectWallet() {
+            try {
+                walletAPI.clearAlerts();
+                
+                // Confirm disconnect
+                if (!confirm('Are you sure you want to disconnect your wallet? You will need to import it again to access your funds.')) {
+                    return;
+                }
+                
+                await walletAPI.disconnectWallet();
+                isConnected = false;
+                updateWalletStatus();
+                
+                // Clear wallet data display
+                document.getElementById('walletAddress').textContent = 'Connect wallet to view address';
+                document.getElementById('walletNameDisplay').textContent = '-';
+                document.getElementById('copyAddressBtn').disabled = true;
+                document.getElementById('solBalance').textContent = '0.000000000';
+                document.getElementById('usdtBalance').textContent = '0.000000';
+                document.getElementById('recentTransactions').innerHTML = `
+                    <div class="text-center text-gray-500 py-8">
+                        <svg class="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                        </svg>
+                        <p>No recent transactions</p>
+                    </div>
+                `;
+                
+                walletAPI.showSuccess('Wallet disconnected successfully!');
+                
+            } catch (error) {
+                console.error('Failed to disconnect wallet:', error);
+                walletAPI.showError('Failed to disconnect wallet: ' + error.message);
+            }
+        }
+
+        function switchWallet() {
+            // Show wallet setup screen to allow switching to a different wallet
+            isConnected = false;
+            updateWalletStatus();
+            walletAPI.showSuccess('Choose a new wallet to connect');
+        }
+
+        function togglePrivateKeyVisibility() {
+            const input = document.getElementById('newPrivateKey');
+            const button = document.getElementById('togglePrivateKeyBtn');
+            
+            if (input.type === 'password') {
+                input.type = 'text';
+                button.textContent = 'Hide';
+            } else {
+                input.type = 'password';
+                button.textContent = 'Show';
+            }
+        }
+
+        async function copyToClipboard(elementId) {
+            try {
+                const element = document.getElementById(elementId);
+                await navigator.clipboard.writeText(element.value);
+                walletAPI.showSuccess('Copied to clipboard!');
+            } catch (error) {
+                console.error('Failed to copy to clipboard:', error);
+                walletAPI.showError('Failed to copy to clipboard');
+            }
+        }
+
+        async function loadWalletData() {
+            try {
+                // Load balances
+                const solBalance = await walletAPI.getSolBalance();
+                const usdtBalance = await walletAPI.getTokenBalance('USDT');
+                
+                // Update balance displays
+                document.getElementById('solBalance').textContent = solBalance.formattedBalance;
+                document.getElementById('usdtBalance').textContent = usdtBalance.formattedBalance;
+                
+                // Update wallet address and name
+                const address = walletAPI.wallet.publicKey.toString();
+                const walletName = walletAPI.getWalletName();
+                document.getElementById('walletAddress').textContent = address;
+                document.getElementById('walletNameDisplay').textContent = walletName;
+                document.getElementById('copyAddressBtn').disabled = false;
+                
+                // Load recent transactions
+                await loadRecentTransactions();
+                
+            } catch (error) {
+                console.error('Failed to load wallet data:', error);
+                walletAPI.showError('Failed to load wallet data: ' + error.message);
+            }
+        }
+
+        async function loadRecentTransactions() {
+            try {
+                const transactions = await walletAPI.getTransactionHistory(5);
+                const container = document.getElementById('recentTransactions');
+                
+                if (transactions.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center text-gray-500 py-8">
+                            <svg class="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                            </svg>
+                            <p>No recent transactions</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                container.innerHTML = transactions.map(tx => `
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
+                                </svg>
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium text-gray-800">Transaction</p>
+                                <p class="text-xs text-gray-500">${tx.blockTime ? new Date(tx.blockTime * 1000).toLocaleString() : 'Pending'}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xs text-gray-500">${tx.signature.slice(0, 8)}...</span>
+                            <a href="${tx.explorerUrl}" target="_blank" class="text-blue-600 hover:text-blue-800">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                                </svg>
+                            </a>
+                        </div>
+                    </div>
+                `).join('');
+                
+            } catch (error) {
+                console.error('Failed to load transactions:', error);
+            }
+        }
+
+        function openSendModal() {
+            document.getElementById('sendModal').classList.remove('hidden');
+            document.getElementById('sendModal').classList.add('flex');
+        }
+
+        function closeSendModal() {
+            document.getElementById('sendModal').classList.add('hidden');
+            document.getElementById('sendModal').classList.remove('flex');
+            document.getElementById('sendForm').reset();
+        }
+
+        async function handleSendTokens(event) {
+            event.preventDefault();
+            
+            try {
+                walletAPI.clearAlerts();
+                const button = document.getElementById('confirmSendBtn');
+                walletAPI.showLoading(button, 'Sending...');
+                
+                const token = document.getElementById('sendToken').value;
+                const recipient = document.getElementById('sendRecipient').value;
+                const amount = document.getElementById('sendAmount').value;
+                
+                // Validate inputs
+                if (!recipient || recipient.length < 32) {
+                    throw new Error('Please enter a valid recipient address');
+                }
+                
+                if (!amount || parseFloat(amount) <= 0) {
+                    throw new Error('Please enter a valid amount');
+                }
+                
+                // Send tokens
+                let result;
+                if (token === 'SOL') {
+                    result = await walletAPI.sendSol(recipient, amount);
+                } else {
+                    result = await walletAPI.sendTokens(token, recipient, amount);
+                }
+                
+                walletAPI.hideLoading(button, 'Send');
+                walletAPI.showSuccess(
+                    `${token} sent successfully!`,
+                    result.explorerUrl
+                );
+                
+                // Close modal and refresh data
+                closeSendModal();
+                await loadWalletData();
+                
+            } catch (error) {
+                console.error('Failed to send tokens:', error);
+                walletAPI.showError('Failed to send tokens: ' + error.message);
+                const button = document.getElementById('confirmSendBtn');
+                walletAPI.hideLoading(button, 'Send');
+            }
+        }
+
+        function openHistoryModal() {
+            document.getElementById('historyModal').classList.remove('hidden');
+            document.getElementById('historyModal').classList.add('flex');
+            loadTransactionHistory();
+        }
+
+        function closeHistoryModal() {
+            document.getElementById('historyModal').classList.add('hidden');
+            document.getElementById('historyModal').classList.remove('flex');
+        }
+
+        async function loadTransactionHistory() {
+            try {
+                const container = document.getElementById('historyContent');
+                container.innerHTML = `
+                    <div class="text-center text-gray-500 py-8">
+                        <svg class="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        <p>Loading transactions...</p>
+                    </div>
+                `;
+                
+                const transactions = await walletAPI.getTransactionHistory(20);
+                
+                if (transactions.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center text-gray-500 py-8">
+                            <svg class="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                            </svg>
+                            <p>No transactions found</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                container.innerHTML = transactions.map(tx => `
+                    <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                        <div class="flex items-center space-x-4">
+                            <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
+                                </svg>
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium text-gray-800">Transaction</p>
+                                <p class="text-xs text-gray-500">${tx.blockTime ? new Date(tx.blockTime * 1000).toLocaleString() : 'Pending'}</p>
+                                <p class="text-xs font-mono text-gray-400">${tx.signature}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xs px-2 py-1 rounded ${tx.err ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}">
+                                ${tx.err ? 'Failed' : 'Success'}
+                            </span>
+                            <a href="${tx.explorerUrl}" target="_blank" class="text-blue-600 hover:text-blue-800">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                                </svg>
+                            </a>
+                        </div>
+                    </div>
+                `).join('');
+                
+            } catch (error) {
+                console.error('Failed to load transaction history:', error);
+                document.getElementById('historyContent').innerHTML = `
+                    <div class="text-center text-red-500 py-8">
+                        <p>Failed to load transactions</p>
+                    </div>
+                `;
+            }
+        }
+
+        async function copyWalletAddress() {
+            try {
+                const address = walletAPI.wallet.publicKey.toString();
+                await navigator.clipboard.writeText(address);
+                walletAPI.showSuccess('Wallet address copied to clipboard!');
+            } catch (error) {
+                console.error('Failed to copy address:', error);
+                walletAPI.showError('Failed to copy wallet address');
+            }
+        }
+
+        // Close modals when clicking outside
+        document.addEventListener('click', function(event) {
+            if (event.target.id === 'sendModal') {
+                closeSendModal();
+            }
+            if (event.target.id === 'historyModal') {
+                closeHistoryModal();
+            }
+            if (event.target.id === 'createWalletModal') {
+                closeCreateWalletModal();
+            }
+            if (event.target.id === 'importWalletModal') {
+                closeImportWalletModal();
+            }
+        });
+    </script>
+</body>
+</html>

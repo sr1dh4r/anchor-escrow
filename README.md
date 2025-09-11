@@ -139,3 +139,60 @@ Finally, run the test:
 ```
 $ anchor test --skip-deploy --skip-build --skip-local-validator
 ```
+
+## Client Applications
+
+This project includes two client applications:
+
+### 1. Escrow Platform (`client/`)
+
+A web-based escrow platform for USDT-INR trading:
+
+- **`index.html`** - Landing page with role selection
+- **`seller.html`** - Seller dashboard for creating and managing escrows
+- **`buyer.html`** - Buyer dashboard for confirming payments
+- **`escrow-api.js`** - JavaScript API for escrow operations
+
+**Features:**
+- Create escrows with USDT deposits
+- Confirm off-chain INR payments
+- Release tokens after payment confirmation
+- Cancel escrows if needed
+- Phantom wallet integration
+
+### 2. Solana Wallet (`wallet/`)
+
+A basic crypto wallet for USDT on Solana with extensible architecture:
+
+- **`wallet.html`** - Main wallet interface with Phantom-inspired UI
+- **`wallet-api.js`** - Wallet API with Solana integration
+- **`test.html`** - API testing interface
+- **`README.md`** - Wallet documentation
+
+**Features:**
+- Send and receive USDT tokens
+- SOL balance management
+- Transaction history
+- Extensible for new tokens and chains
+- Modern UI with Tailwind CSS
+
+## Usage
+
+### Running the Escrow Platform
+
+1. Start a local server in the `client/` directory
+2. Open `index.html` in your browser
+3. Connect your Phantom wallet
+4. Choose your role (Seller or Buyer)
+
+### Running the Wallet
+
+1. Start a local server in the `wallet/` directory
+2. Open `wallet.html` in your browser
+3. Connect your Phantom wallet
+4. Manage your USDT and SOL tokens
+
+### Testing the Wallet API
+
+1. Open `wallet/test.html` in your browser
+2. Run the various API tests to verify functionality
