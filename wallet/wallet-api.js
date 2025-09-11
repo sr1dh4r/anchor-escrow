@@ -27,6 +27,10 @@ class WalletAPI {
         this.transactionCallbacks = new Map(); // transactionId -> callback
         this.isMonitoring = false;
         
+        // Transaction history
+        this.transactions = this.loadTransactions();
+        this.previousBalances = new Map(); // tokenSymbol -> previous balance
+        
         // Token configurations - easily extensible for new tokens
         this.tokens = {
             'USDT': {
@@ -1049,6 +1053,10 @@ class WalletAPI {
                 currentBalance = await this.getTokenBalance(tokenSymbol);
             }
             console.log(`📊 Current ${tokenSymbol} balance: ${currentBalance}`);
+            
+            // Update previous balance for future comparisons
+            this.previousBalances.set(tokenSymbol, currentBalance);
+            
         } catch (error) {
             console.log(`⚠️ Could not get current balance for ${tokenSymbol}:`, error.message);
         }
@@ -1090,6 +1098,396 @@ class WalletAPI {
             this.transactionCallbacks.delete(transactionId);
             console.log(`🗑️ Removed callback for transaction ${transactionId}`);
         }
+    }
+
+    /**
+     * Load transactions from localStorage
+     */
+    loadTransactions() {
+        try {
+            const stored = localStorage.getItem('wallet_transactions');
+            return stored ? JSON.parse(stored) : [];
+        } catch (error) {
+            console.error('Failed to load transactions:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Save transactions to localStorage
+     */
+    saveTransactions() {
+        try {
+            localStorage.setItem('wallet_transactions', JSON.stringify(this.transactions));
+        } catch (error) {
+            console.error('Failed to save transactions:', error);
+        }
+    }
+
+    /**
+     * Add transaction to history
+     */
+    addTransaction(transaction) {
+        this.transactions.unshift(transaction); // Add to beginning
+        // Keep only last 100 transactions
+        if (this.transactions.length > 100) {
+            this.transactions = this.transactions.slice(0, 100);
+        }
+        this.saveTransactions();
+        console.log('📝 Transaction added to history:', transaction);
+    }
+
+    /**
+     * Get all transactions
+     */
+    getTransactions() {
+        return this.transactions;
+    }
+
+    /**
+     * Record transaction when balance changes
+     */
+    recordTransaction(tokenSymbol, amount, type, address, signature = null) {
+        const transaction = {
+            id: signature || `tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            tokenSymbol,
+            amount: parseFloat(amount),
+            type, // 'sent' or 'received'
+            address: address.length > 12 ? `${address.slice(0, 6)}...${address.slice(-6)}` : address,
+            fullAddress: address,
+            timestamp: new Date().toISOString(),
+            date: new Date().toLocaleDateString(),
+            time: new Date().toLocaleTimeString()
+        };
+        
+        this.addTransaction(transaction);
+        return transaction;
+    }
+
+    /**
+     * Fetch and parse transaction history from blockchain
+     */
+    async fetchTransactionHistory(limit = 20) {
+        if (!this.wallet) {
+            console.log('⚠️ No wallet connected');
+            return [];
+        }
+
+        try {
+            console.log(`📡 Fetching last ${limit} transactions...`);
+            
+            // Get transaction signatures for the wallet
+            const signatures = await this.connection.getSignaturesForAddress(
+                this.wallet.publicKey,
+                { limit }
+            );
+
+            console.log(`📋 Found ${signatures.length} transaction signatures`);
+
+            // Check which signatures we don't have yet
+            const existingSignatures = new Set(this.transactions.map(tx => tx.signature));
+            const newSignatures = signatures.filter(sig => !existingSignatures.has(sig.signature));
+
+            if (newSignatures.length === 0) {
+                console.log('✅ All transactions already cached');
+                return this.transactions;
+            }
+
+            console.log(`📋 Found ${newSignatures.length} new transactions to fetch`);
+
+            const newTransactions = [];
+
+            // Process only new transactions
+            for (const sigInfo of newSignatures) {
+                try {
+                    const transaction = await this.parseTransaction(sigInfo);
+                    if (transaction) {
+                        newTransactions.push(transaction);
+                    }
+                } catch (error) {
+                    console.log(`⚠️ Failed to parse transaction ${sigInfo.signature}:`, error.message);
+                }
+            }
+
+            if (newTransactions.length > 0) {
+                // Add new transactions to the beginning of the list
+                this.transactions = [...newTransactions, ...this.transactions];
+                
+                // Keep only last 100 transactions
+                if (this.transactions.length > 100) {
+                    this.transactions = this.transactions.slice(0, 100);
+                }
+                
+                this.saveTransactions();
+            }
+
+            console.log(`✅ Parsed ${newTransactions.length} new transactions`);
+            return this.transactions;
+
+        } catch (error) {
+            console.error('❌ Failed to fetch transaction history:', error);
+            return this.transactions; // Return cached transactions on error
+        }
+    }
+
+    /**
+     * Start background transaction sync
+     */
+    startTransactionSync() {
+        if (this.syncInterval) {
+            clearInterval(this.syncInterval);
+        }
+
+        // Sync immediately
+        this.syncTransactions();
+
+        // Then sync every 30 seconds
+        this.syncInterval = setInterval(() => {
+            this.syncTransactions();
+        }, 30000);
+
+        console.log('🔄 Started background transaction sync');
+    }
+
+    /**
+     * Stop background transaction sync
+     */
+    stopTransactionSync() {
+        if (this.syncInterval) {
+            clearInterval(this.syncInterval);
+            this.syncInterval = null;
+            console.log('⏹️ Stopped background transaction sync');
+        }
+    }
+
+    /**
+     * Sync transactions in background
+     */
+    async syncTransactions() {
+        if (!this.wallet) return;
+
+        try {
+            console.log('🔄 Syncing transactions...');
+            
+            // Get latest signatures first
+            const signatures = await this.connection.getSignaturesForAddress(
+                this.wallet.publicKey,
+                { limit: 20 }
+            );
+
+            if (signatures.length === 0) {
+                console.log('📋 No transaction signatures found');
+                return;
+            }
+
+            // Check which signatures we don't have yet
+            const existingSignatures = new Set(this.transactions.map(tx => tx.signature));
+            const newSignatures = signatures.filter(sig => !existingSignatures.has(sig.signature));
+
+            if (newSignatures.length === 0) {
+                console.log('✅ No new transactions to sync');
+                return;
+            }
+
+            console.log(`📋 Found ${newSignatures.length} new transactions to fetch`);
+
+            // Fetch only new transactions
+            const newTransactions = [];
+            for (const sigInfo of newSignatures) {
+                try {
+                    const transaction = await this.parseTransaction(sigInfo);
+                    if (transaction) {
+                        newTransactions.push(transaction);
+                    }
+                } catch (error) {
+                    console.log(`⚠️ Failed to parse transaction ${sigInfo.signature}:`, error.message);
+                }
+            }
+
+            if (newTransactions.length > 0) {
+                // Add new transactions to the beginning of the list
+                this.transactions = [...newTransactions, ...this.transactions];
+                
+                // Keep only last 100 transactions
+                if (this.transactions.length > 100) {
+                    this.transactions = this.transactions.slice(0, 100);
+                }
+                
+                this.saveTransactions();
+                console.log(`✅ Synced ${newTransactions.length} new transactions`);
+            }
+        } catch (error) {
+            console.log('⚠️ Background sync failed:', error.message);
+        }
+    }
+
+    /**
+     * Parse individual transaction to extract transfer details using balance-change analysis
+     * EXACT COPY of debug-transactions.js logic
+     */
+    async parseTransaction(sigInfo) {
+        try {
+            // Get parsed transaction details (EXACT SAME AS DEBUG SCRIPT)
+            const txResponse = await this.connection.getParsedTransaction(sigInfo.signature, {
+                commitment: 'confirmed',
+                maxSupportedTransactionVersion: 0
+            });
+            
+            if (!txResponse || !txResponse.meta) {
+                return null;
+            }
+            
+            const { transaction, meta } = txResponse;
+            const walletPubkey = this.wallet.publicKey.toString();
+            
+            // Analyze token balance changes only for our wallet's ATAs (EXACT SAME AS DEBUG SCRIPT)
+            if (meta.preTokenBalances && meta.postTokenBalances) {
+                for (const preBalance of meta.preTokenBalances) {
+                    // Only process if this ATA belongs to our wallet
+                    if (preBalance.owner !== walletPubkey) {
+                        continue;
+                    }
+                    
+                    const postBalance = meta.postTokenBalances.find(
+                        post => post.accountIndex === preBalance.accountIndex && post.mint === preBalance.mint
+                    );
+                    
+                    if (postBalance) {
+                        const preAmount = parseFloat(preBalance.uiTokenAmount?.uiAmount || 0);
+                        const postAmount = parseFloat(postBalance.uiTokenAmount?.uiAmount || 0);
+                        const change = postAmount - preAmount;
+                        
+                        if (Math.abs(change) > 0.000001) { // Significant change
+                            const isReceived = change > 0;
+                            const amount = Math.abs(change);
+                            
+                            // Get token name from mint address
+                            const tokenName = this.getTokenName(preBalance.mint);
+                            
+                            // Determine to/from addresses based on direction
+                            let toAddress, fromAddress;
+                            if (isReceived) {
+                                // We received tokens - find who sent them to us
+                                fromAddress = this.getOtherAccountAddress(transaction, walletPubkey, preBalance.owner);
+                                toAddress = walletPubkey;
+                            } else {
+                                // We sent tokens - find who received them
+                                fromAddress = walletPubkey;
+                                toAddress = this.getDestinationATAOwner(transaction, meta, preBalance.mint, walletPubkey);
+                            }
+                            
+                            // Return the FIRST token transfer found (EXACT SAME AS DEBUG SCRIPT)
+                            return {
+                                id: sigInfo.signature,
+                                tokenSymbol: tokenName,
+                                amount: amount,
+                                type: isReceived ? 'received' : 'sent',
+                                address: (isReceived ? fromAddress : toAddress).length > 12 ? 
+                                    `${(isReceived ? fromAddress : toAddress).slice(0, 6)}...${(isReceived ? fromAddress : toAddress).slice(-6)}` : 
+                                    (isReceived ? fromAddress : toAddress),
+                                fullAddress: isReceived ? fromAddress : toAddress,
+                                timestamp: new Date(sigInfo.blockTime * 1000).toISOString(),
+                                date: new Date(sigInfo.blockTime * 1000).toLocaleDateString(),
+                                time: new Date(sigInfo.blockTime * 1000).toLocaleTimeString(),
+                                signature: sigInfo.signature,
+                                blockTime: sigInfo.blockTime
+                            };
+                        }
+                    }
+                }
+            }
+
+            return null;
+
+        } catch (error) {
+            console.log(`⚠️ Error parsing transaction ${sigInfo.signature}:`, error.message);
+            return null;
+        }
+    }
+
+    /**
+     * Helper function to get token name from mint address
+     */
+    getTokenName(mintAddress) {
+        const knownTokens = {
+            'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v': 'USDC',
+            'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB': 'USDT',
+            'So11111111111111111111111111111111111111112': 'SOL',
+            'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263': 'BONK',
+            'mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So': 'mSOL',
+            '7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs': 'ETH (Wormhole)',
+            'A9mUU4qviSctJVPJdBJkbHknXz5u6F4kCx6k6C6k6C6k': 'Unknown Token'
+        };
+        return knownTokens[mintAddress] || `Token (${mintAddress.slice(0, 8)}...)`;
+    }
+
+    /**
+     * Helper function to get the other account address in a transaction
+     */
+    getOtherAccountAddress(transaction, walletPubkey, ataOwner) {
+        const accountKeys = transaction.message.accountKeys;
+        
+        // Find accounts that are not our wallet or the ATA owner
+        for (const account of accountKeys) {
+            const accountStr = account.toString();
+            if (accountStr !== walletPubkey && accountStr !== ataOwner) {
+                return accountStr;
+            }
+        }
+        
+        // If no other account found, return the ATA owner
+        return ataOwner;
+    }
+
+    /**
+     * Helper function to get the owner of the destination ATA when sending tokens
+     */
+    getDestinationATAOwner(transaction, meta, mintAddress, walletPubkey) {
+        // Look for token balance changes where the amount increased (someone received tokens)
+        if (meta.preTokenBalances && meta.postTokenBalances) {
+            for (const preBalance of meta.preTokenBalances) {
+                // Skip our own ATA
+                if (preBalance.owner === walletPubkey) {
+                    continue;
+                }
+                
+                // Only look at the same token mint
+                if (preBalance.mint !== mintAddress) {
+                    continue;
+                }
+                
+                const postBalance = meta.postTokenBalances.find(
+                    post => post.accountIndex === preBalance.accountIndex && post.mint === preBalance.mint
+                );
+                
+                if (postBalance) {
+                    const preAmount = parseFloat(preBalance.uiTokenAmount?.uiAmount || 0);
+                    const postAmount = parseFloat(postBalance.uiTokenAmount?.uiAmount || 0);
+                    const change = postAmount - preAmount;
+                    
+                    // If this ATA received tokens (positive change), return its owner
+                    if (change > 0.000001) {
+                        return preBalance.owner;
+                    }
+                }
+            }
+        }
+        
+        // Fallback: try to find any other account in the transaction
+        return this.getOtherAccountAddress(transaction, walletPubkey, walletPubkey);
+    }
+
+
+    /**
+     * Get token symbol by mint address
+     */
+    getTokenSymbolByMint(mint) {
+        for (const [symbol, config] of Object.entries(this.tokens)) {
+            if (config.mint === mint) {
+                return symbol;
+            }
+        }
+        return 'Unknown';
     }
 }
 
